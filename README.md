@@ -133,8 +133,6 @@ Returns the current ruleset for transparency.
 | Agent | `promptly init` | Rules | Codebase Analysis |
 |-------|-----------------|-------|-------------------|
 | **Claude Code** | Yes | Full agent-specific rules | Full |
-| **Cursor** | Coming soon | Full agent-specific rules | Full |
-| **Gemini CLI** | Coming soon | Full agent-specific rules | Full |
 
 ---
 
