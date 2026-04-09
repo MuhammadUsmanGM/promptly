@@ -6,7 +6,7 @@
 [![MCP](https://img.shields.io/badge/MCP-Compatible-8B5CF6)](https://modelcontextprotocol.io)
 [![Claude Code](https://img.shields.io/badge/Claude_Code-Ready-F97316?logo=anthropic&logoColor=white)](https://claude.ai)
 [![Cursor](https://img.shields.io/badge/Cursor-Ready-00D1FF?logo=cursor&logoColor=white)](https://cursor.com)
-[![npm](https://img.shields.io/badge/npm-promptly--ai-CB3837?logo=npm&logoColor=white)](https://www.npmjs.com/package/promptly-ai)
+[![npm](https://img.shields.io/badge/npm-@promptly--ai/cli-CB3837?logo=npm&logoColor=white)](https://www.npmjs.com/package/@promptly-ai/cli)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](http://makeapullrequest.com)
 
 **Better prompts. Better code. First time.**
@@ -50,8 +50,14 @@ No external API call. No latency from a second model. Your agent just becomes mo
 ## Quick Start
 
 ```bash
-npm install -g promptly-ai
+npm install -g @promptly-ai/cli
 promptly init
+```
+
+Or without global install:
+
+```bash
+npx @promptly-ai/cli init
 ```
 
 That's it. Restart Claude Code and Promptly is active.
@@ -124,11 +130,11 @@ Returns the current ruleset for transparency.
 
 ## Supported Agents
 
-| Agent | Rules | Codebase Analysis |
-|-------|-------|-------------------|
-| **Claude Code** | Full agent-specific rules | Full |
-| **Cursor** | Full agent-specific rules | Full |
-| **Gemini CLI** | Full agent-specific rules | Full |
+| Agent | `promptly init` | Rules | Codebase Analysis |
+|-------|-----------------|-------|-------------------|
+| **Claude Code** | Yes | Full agent-specific rules | Full |
+| **Cursor** | Coming soon | Full agent-specific rules | Full |
+| **Gemini CLI** | Coming soon | Full agent-specific rules | Full |
 
 ---
 
@@ -138,7 +144,7 @@ Returns the current ruleset for transparency.
 promptly/
 ├── packages/
 │   ├── rules/   # @promptly/rules — shared refinement rules
-│   └── cli/     # promptly-ai — npm package + local MCP server + codebase analyzer
+│   └── cli/     # @promptly-ai/cli — npm package + local MCP server + codebase analyzer
 ├── package.json
 └── tsconfig.base.json
 ```

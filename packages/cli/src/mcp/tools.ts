@@ -3,7 +3,11 @@ import { z } from "zod";
 import { analyzeCodebase } from "../analyzer/index.js";
 import { refinePrompt, getRulesDescription, type Agent } from "@promptly/rules";
 
-export function registerTools(server: McpServer) {
+export function registerTools(server: McpServer, debug = false) {
+  const log = debug
+    ? (...args: unknown[]) => console.error("[promptly]", ...args)
+    : () => {};
+
   // Tool 1: analyze_codebase — the real value
   server.tool(
     "analyze_codebase",
@@ -13,8 +17,10 @@ export function registerTools(server: McpServer) {
       depth: z.number().optional().default(3).describe("How deep to scan the file tree (default 3)"),
     },
     async ({ project_path, depth }) => {
+      log(`analyze_codebase called — path=${project_path}, depth=${depth}`);
       try {
         const context = await analyzeCodebase(project_path, depth);
+        log(`analyze_codebase done — stack=${context.stack?.framework ?? "unknown"}, files=${context.structure?.totalFiles ?? 0}`);
         return {
           content: [
             {
@@ -24,6 +30,7 @@ export function registerTools(server: McpServer) {
           ],
         };
       } catch (error) {
+        log(`analyze_codebase error —`, error);
         return {
           content: [
             {
@@ -53,6 +60,7 @@ export function registerTools(server: McpServer) {
       agent: z.enum(["claude_code", "cursor", "gemini_cli", "generic"]).optional().default("claude_code").describe("Which agent is being used"),
     },
     async ({ raw_prompt, codebase_context, agent }) => {
+      log(`refine_prompt called — agent=${agent}, prompt="${raw_prompt.slice(0, 80)}..."`);
       let context = {};
       if (codebase_context) {
         try {
@@ -61,6 +69,7 @@ export function registerTools(server: McpServer) {
       }
 
       const { refined, rulesApplied } = refinePrompt(raw_prompt, context, agent as Agent);
+      log(`refine_prompt done — rules applied: ${rulesApplied.join(", ") || "none"}`);
 
       return {
         content: [
@@ -85,6 +94,7 @@ export function registerTools(server: McpServer) {
       agent: z.enum(["claude_code", "cursor", "gemini_cli", "generic"]).optional().default("generic").describe("Which agent to get rules for"),
     },
     async ({ agent }) => {
+      log(`get_refinement_rules called — agent=${agent}`);
       const description = getRulesDescription(agent as Agent);
       return {
         content: [

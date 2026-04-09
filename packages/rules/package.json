@@ -1,7 +1,12 @@
 {
   "name": "@promptly/rules",
   "version": "1.0.0",
+  "description": "Shared refinement rules for Promptly",
+  "license": "MIT",
   "type": "module",
+  "files": [
+    "dist"
+  ],
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {

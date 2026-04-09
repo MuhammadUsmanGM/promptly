@@ -55,8 +55,8 @@ export async function init() {
 
   if (!settings.mcpServers["promptly"]) {
     settings.mcpServers["promptly"] = {
-      command: "promptly",
-      args: ["mcp"],
+      command: "npx",
+      args: ["-y", "@promptly-ai/cli", "mcp"],
     };
 
     await mkdir(claudeDir, { recursive: true });

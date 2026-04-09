@@ -1,6 +1,8 @@
 {
-  "name": "promptly-ai",
+  "name": "@promptly-ai/cli",
   "version": "1.0.0",
+  "description": "MCP server that analyzes your codebase and refines coding prompts before your AI agent acts on them",
+  "license": "MIT",
   "type": "module",
   "bin": {
     "promptly": "dist/bin/promptly.js"
@@ -10,6 +12,23 @@
   ],
   "main": "dist/mcp/server.js",
   "types": "dist/mcp/server.d.ts",
+  "keywords": [
+    "mcp",
+    "prompt",
+    "ai",
+    "claude",
+    "claude-code",
+    "cursor",
+    "gemini",
+    "codebase",
+    "refine",
+    "context",
+    "model-context-protocol"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/MuhammadUsmanGM/promptly.git"
+  },
   "scripts": {
     "build": "tsup src/bin/promptly.ts src/mcp/server.ts src/cli/index.ts --format esm --dts --splitting",
     "dev": "tsup src/bin/promptly.ts --format esm --watch",
