@@ -1,7 +1,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { analyzeCodebase } from "../analyzer/index.js";
-import { refinePrompt, getRulesDescription, type Agent } from "@promptly/rules";
+import { refinePrompt, getRulesDescription, type Agent } from "../rules/index.js";
 
 export function registerTools(server: McpServer, debug = false) {
   const log = debug

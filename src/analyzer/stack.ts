@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
-import type { StackInfo } from "@promptly/rules";
+import type { StackInfo } from "../rules/index.js";
 
 interface PackageJson {
   dependencies?: Record<string, string>;

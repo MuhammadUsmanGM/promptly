@@ -1,16 +1,18 @@
 import { readFileSync } from "node:fs";
-import { join, dirname } from "node:path";
+import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
-
 function loadVersion(): string {
-  try {
-    const pkg = JSON.parse(readFileSync(join(__dirname, "../../package.json"), "utf-8"));
-    return pkg.version ?? "0.0.0";
-  } catch {
-    return "0.0.0";
+  let dir = dirname(fileURLToPath(import.meta.url));
+  // Walk up from the built file to find our package.json
+  for (let i = 0; i < 4; i++) {
+    try {
+      const pkg = JSON.parse(readFileSync(join(dir, "package.json"), "utf-8"));
+      if (pkg.version) return pkg.version;
+    } catch { /* not here, go up */ }
+    dir = dirname(dir);
   }
+  return "0.0.0";
 }
 
 const VERSION = loadVersion();

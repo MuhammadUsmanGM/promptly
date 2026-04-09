@@ -1,6 +1,6 @@
 import { readFile, readdir, stat } from "node:fs/promises";
 import { join, extname, basename } from "node:path";
-import type { ConventionInfo } from "@promptly/rules";
+import type { ConventionInfo } from "../rules/index.js";
 
 const CODE_EXTENSIONS = new Set([
   ".ts", ".tsx", ".js", ".jsx", ".vue", ".svelte",

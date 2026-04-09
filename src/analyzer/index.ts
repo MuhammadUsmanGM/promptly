@@ -1,4 +1,4 @@
-import type { CodebaseContext } from "@promptly/rules";
+import type { CodebaseContext } from "../rules/index.js";
 import { detectStack } from "./stack.js";
 import { detectConventions } from "./conventions.js";
 import { detectStructure } from "./structure.js";

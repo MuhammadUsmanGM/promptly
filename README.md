@@ -140,11 +140,15 @@ Returns the current ruleset for transparency.
 
 ```
 promptly/
-├── packages/
-│   ├── rules/   # @promptly/rules — shared refinement rules
-│   └── cli/     # @promptly-ai/cli — npm package + local MCP server + codebase analyzer
+├── src/
+│   ├── analyzer/   # Codebase analysis (stack, conventions, structure, deps)
+│   ├── bin/        # CLI entrypoint
+│   ├── cli/        # CLI commands (init, status, rules)
+│   ├── mcp/        # MCP server + tool definitions
+│   └── rules/      # Refinement rules (universal + agent-specific)
 ├── package.json
-└── tsconfig.base.json
+├── tsconfig.json
+└── tsup.config.ts
 ```
 
 ---
@@ -161,8 +165,8 @@ npm run build
 Test the CLI:
 
 ```bash
-node packages/cli/dist/bin/promptly.js --help
-node packages/cli/dist/bin/promptly.js rules claude_code
+node dist/bin/promptly.js --help
+node dist/bin/promptly.js rules claude_code
 ```
 
 ---

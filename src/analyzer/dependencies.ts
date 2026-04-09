@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
-import type { DependencyInfo, DependencyEntry } from "@promptly/rules";
+import type { DependencyInfo, DependencyEntry } from "../rules/index.js";
 
 const CATEGORIES: Record<string, string[]> = {
   "UI Framework": ["react", "vue", "svelte", "@angular/core", "solid-js", "preact"],

@@ -1,7 +1,7 @@
 import { init } from "./init.js";
 import { status } from "./status.js";
 import { printBanner, VERSION } from "./banner.js";
-import { getRulesDescription } from "@promptly/rules";
+import { getRulesDescription } from "../rules/index.js";
 
 export async function runCli(args: string[]) {
   const command = args[0];

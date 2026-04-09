@@ -1,6 +1,6 @@
 import { readdir, stat } from "node:fs/promises";
 import { join, relative } from "node:path";
-import type { StructureInfo } from "@promptly/rules";
+import type { StructureInfo } from "../rules/index.js";
 
 const SKIP_DIRS = new Set([
   "node_modules", ".git", ".next", ".nuxt", ".svelte-kit",

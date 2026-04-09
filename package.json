@@ -1,14 +1,48 @@
 {
-  "name": "promptly",
+  "name": "@promptly-ai/cli",
   "version": "1.0.0",
-  "private": true,
-  "workspaces": [
-    "packages/rules",
-    "packages/cli"
+  "description": "MCP server that analyzes your codebase and refines coding prompts before your AI agent acts on them",
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "promptly": "dist/bin/promptly.js"
+  },
+  "files": [
+    "dist"
   ],
+  "main": "dist/mcp/server.js",
+  "types": "dist/mcp/server.d.ts",
+  "keywords": [
+    "mcp",
+    "prompt",
+    "ai",
+    "claude",
+    "claude-code",
+    "cursor",
+    "gemini",
+    "codebase",
+    "refine",
+    "context",
+    "model-context-protocol"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/MuhammadUsmanGM/promptly.git"
+  },
   "scripts": {
-    "build": "npm run build -w packages/rules && npm run build -w packages/cli",
-    "dev": "npm run dev -w packages/cli"
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "postinstall": "echo \"\n  ✦ Promptly installed successfully!\n  Run 'promptly init' to activate it.\n\""
+  },
+  "dependencies": {
+    "@inquirer/select": "^4.2.0",
+    "@modelcontextprotocol/sdk": "^1.12.1",
+    "zod": "^3.23.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "tsup": "^8.0.0",
+    "typescript": "^5.4.0"
   },
   "engines": {
     "node": ">=20.0.0"
