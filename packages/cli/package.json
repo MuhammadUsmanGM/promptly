@@ -15,6 +15,7 @@
     "dev": "tsup src/bin/promptly.ts --format esm --watch"
   },
   "dependencies": {
+    "@inquirer/select": "^4.2.0",
     "@modelcontextprotocol/sdk": "^1.12.1",
     "@promptly/rules": "1.0.0",
     "zod": "^3.23.0"

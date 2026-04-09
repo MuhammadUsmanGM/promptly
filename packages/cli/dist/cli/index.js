@@ -1,6 +1,6 @@
 import {
   runCli
-} from "../chunk-V6QPNNGN.js";
+} from "../chunk-G2IJXX3B.js";
 export {
   runCli
 };
