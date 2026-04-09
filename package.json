@@ -4,13 +4,11 @@
   "private": true,
   "workspaces": [
     "packages/rules",
-    "packages/cli",
-    "packages/server"
+    "packages/cli"
   ],
   "scripts": {
-    "build": "npm run build -w packages/rules && npm run build -w packages/cli && npm run build -w packages/server",
-    "dev:server": "npm run dev -w packages/server",
-    "dev:cli": "npm run dev -w packages/cli"
+    "build": "npm run build -w packages/rules && npm run build -w packages/cli",
+    "dev": "npm run dev -w packages/cli"
   },
   "engines": {
     "node": ">=20.0.0"

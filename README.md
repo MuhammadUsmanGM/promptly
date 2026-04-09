@@ -3,7 +3,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Node.js](https://img.shields.io/badge/Node.js-20%2B-339933?logo=node.js&logoColor=white)](https://nodejs.org)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.4-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org)
-[![MCP](https://img.shields.io/badge/MCP-Compatible-8B5CF6?logo=data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjQiIGhlaWdodD0iMjQiIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48Y2lyY2xlIGN4PSIxMiIgY3k9IjEyIiByPSIxMCIgZmlsbD0id2hpdGUiLz48L3N2Zz4=)](https://modelcontextprotocol.io)
+[![MCP](https://img.shields.io/badge/MCP-Compatible-8B5CF6)](https://modelcontextprotocol.io)
 [![Claude Code](https://img.shields.io/badge/Claude_Code-Ready-F97316?logo=anthropic&logoColor=white)](https://claude.ai)
 [![Cursor](https://img.shields.io/badge/Cursor-Ready-00D1FF?logo=cursor&logoColor=white)](https://cursor.com)
 [![npm](https://img.shields.io/badge/npm-promptly--ai-CB3837?logo=npm&logoColor=white)](https://www.npmjs.com/package/promptly-ai)
@@ -49,22 +49,12 @@ No external API call. No latency from a second model. Your agent just becomes mo
 
 ## Quick Start
 
-### Option 1: npm Package (Claude Code / Local)
-
 ```bash
 npm install -g promptly-ai
 promptly init
 ```
 
 That's it. Restart Claude Code and Promptly is active.
-
-### Option 2: Hosted Connector (Claude.ai)
-
-Add Promptly as an MCP connector in Claude.ai:
-
-```
-MCP URL: https://api.promptly.dev/sse
-```
 
 ---
 
@@ -136,10 +126,9 @@ Returns the current ruleset for transparency.
 
 | Agent | Rules | Codebase Analysis |
 |-------|-------|-------------------|
-| **Claude Code** | Full agent-specific rules | Full (local filesystem) |
-| **Cursor** | Full agent-specific rules | Full (local filesystem) |
-| **Gemini CLI** | Full agent-specific rules | Full (local filesystem) |
-| **Claude.ai** | Universal rules | Context-passthrough only |
+| **Claude Code** | Full agent-specific rules | Full |
+| **Cursor** | Full agent-specific rules | Full |
+| **Gemini CLI** | Full agent-specific rules | Full |
 
 ---
 
@@ -148,14 +137,11 @@ Returns the current ruleset for transparency.
 ```
 promptly/
 ├── packages/
-│   ├── rules/        # @promptly/rules — shared refinement rules
-│   ├── cli/          # promptly-ai — npm package + local MCP server
-│   └── server/       # @promptly/server — hosted SSE connector
-├── package.json      # npm workspaces monorepo
+│   ├── rules/   # @promptly/rules — shared refinement rules
+│   └── cli/     # promptly-ai — npm package + local MCP server + codebase analyzer
+├── package.json
 └── tsconfig.base.json
 ```
-
-**Tech Stack:** Node.js 20+, TypeScript, Express, MCP SDK, npm workspaces, tsup
 
 ---
 
@@ -173,13 +159,6 @@ Test the CLI:
 ```bash
 node packages/cli/dist/bin/promptly.js --help
 node packages/cli/dist/bin/promptly.js rules claude_code
-```
-
-Run the hosted server:
-
-```bash
-npm run dev:server
-# ✦ Promptly server running on port 3000
 ```
 
 ---
