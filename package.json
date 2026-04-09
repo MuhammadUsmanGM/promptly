@@ -32,7 +32,7 @@
   "scripts": {
     "build": "tsup",
     "dev": "tsup --watch",
-    "postinstall": "echo \"\n  ✦ Promptly installed successfully!\n  Run 'promptly init' to activate it.\n\""
+    "postinstall": "node dist/postinstall.js"
   },
   "dependencies": {
     "@inquirer/select": "^4.2.0",
