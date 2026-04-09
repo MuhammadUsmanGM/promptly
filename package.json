@@ -32,7 +32,7 @@
   "scripts": {
     "build": "tsup",
     "dev": "tsup --watch",
-    "postinstall": "node dist/postinstall.js"
+    "postinstall": "node -e \"try{await import('./dist/postinstall.js')}catch{}\" --input-type=module"
   },
   "dependencies": {
     "@inquirer/select": "^4.2.0",
