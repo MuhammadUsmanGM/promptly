@@ -1,5 +1,6 @@
 import { init } from "./init.js";
 import { status } from "./status.js";
+import { printBanner, VERSION } from "./banner.js";
 import { getRulesDescription } from "@promptly/rules";
 
 export async function runCli(args: string[]) {
@@ -7,27 +8,26 @@ export async function runCli(args: string[]) {
 
   switch (command) {
     case "init":
+      printBanner();
       await init();
       break;
 
     case "mcp": {
-      // Start the MCP server — imported dynamically to avoid loading
-      // heavy deps when just running CLI commands
       const { startStdioServer } = await import("../mcp/server.js");
       await startStdioServer();
       break;
     }
 
     case "status":
+      printBanner();
       await status();
       break;
 
     case "rules": {
+      printBanner();
       const agent = args[1] ?? "claude_code";
       const rules = getRulesDescription(agent as "claude_code" | "cursor" | "gemini_cli" | "generic");
-      console.log("");
-      console.log("  ✦ Promptly Refinement Rules");
-      console.log(`    Agent: ${agent}`);
+      console.log(`  \x1b[1mRefinement Rules\x1b[0m \x1b[90m(${agent})\x1b[0m`);
       console.log("");
       console.log(rules);
       console.log("");
@@ -38,30 +38,31 @@ export async function runCli(args: string[]) {
     case "--help":
     case "-h":
     case undefined:
+      printBanner();
       printHelp();
       break;
 
     case "--version":
     case "-v":
-      console.log("1.0.0");
+      console.log(VERSION);
       break;
 
     default:
-      console.error(`  Unknown command: ${command}`);
+      printBanner();
+      console.error(`  \x1b[31mUnknown command: ${command}\x1b[0m`);
+      console.log("");
       printHelp();
       process.exit(1);
   }
 }
 
 function printHelp() {
-  console.log(`
-  ✦ Promptly — Better prompts, better code
+  console.log(`  \x1b[1mUsage:\x1b[0m
 
-  Usage:
     promptly init          Set up Promptly for Claude Code
     promptly mcp           Start MCP server (used by Claude Code)
     promptly status        Check if Promptly is configured
-    promptly rules [agent] Print refinement rules (claude_code|cursor|gemini_cli|generic)
+    promptly rules [agent] Print refinement rules
     promptly --version     Print version
     promptly --help        Print this help
 `);

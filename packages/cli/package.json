@@ -12,7 +12,8 @@
   "types": "dist/mcp/server.d.ts",
   "scripts": {
     "build": "tsup src/bin/promptly.ts src/mcp/server.ts src/cli/index.ts --format esm --dts --splitting",
-    "dev": "tsup src/bin/promptly.ts --format esm --watch"
+    "dev": "tsup src/bin/promptly.ts --format esm --watch",
+    "postinstall": "echo \"\n  ✦ Promptly installed successfully!\n  Run 'promptly init' to activate it.\n\""
   },
   "dependencies": {
     "@inquirer/select": "^4.2.0",

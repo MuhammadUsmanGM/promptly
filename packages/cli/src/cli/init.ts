@@ -22,13 +22,6 @@ When you use Promptly, briefly note "✦ Refined by Promptly" before your respon
 `;
 
 export async function init() {
-  console.log("");
-  console.log("  ✦ Welcome to Promptly");
-  console.log("");
-  console.log("  Promptly adds a refinement layer to Claude Code.");
-  console.log("  Claude itself does the refinement — no extra API key needed.");
-  console.log("");
-
   // Step 1: Ask where to store instructions
   const scope = await select({
     message: "Where should Promptly store its instructions?",
