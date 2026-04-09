@@ -178,7 +178,9 @@ Promptly applies rules in sequence, each one enriching the prompt:
 
 ## Contributing
 
-Contributions are welcome! Please open an issue first to discuss what you'd like to change.
+Contributions are welcome! Please read the [Contributing Guide](CONTRIBUTING.md) before opening a pull request.
+
+See [CHANGELOG.md](CHANGELOG.md) for release history.
 
 ---
 
