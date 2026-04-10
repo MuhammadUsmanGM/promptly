@@ -61,8 +61,12 @@ export async function init() {
   try {
     const raw = await readFile(settingsPath, "utf-8");
     settings = JSON.parse(raw);
-  } catch {
-    // No existing settings
+  } catch (error) {
+    if (error instanceof SyntaxError) {
+      console.error("  \x1b[31m✖ ~/.claude/settings.json contains invalid JSON. Please fix it manually.\x1b[0m");
+      process.exit(1);
+    }
+    // File doesn't exist — will create fresh
   }
 
   if (!settings.mcpServers) settings.mcpServers = {};

@@ -1,4 +1,4 @@
-import { readFile } from "node:fs/promises";
+import { readFile, access } from "node:fs/promises";
 import { join } from "node:path";
 import type { StackInfo } from "../rules/index.js";
 
@@ -84,7 +84,7 @@ const TEST_DETECTORS: Record<string, (pkg: PackageJson) => boolean> = {
 
 async function fileExists(path: string): Promise<boolean> {
   try {
-    await readFile(path);
+    await access(path);
     return true;
   } catch {
     return false;
