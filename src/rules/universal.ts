@@ -69,7 +69,8 @@ export const universalRules: Rule[] = [
         ]
           .filter(Boolean)
           .join(", ");
-        if (stackStr && !prompt.toLowerCase().includes(context.stack.framework?.toLowerCase() ?? "")) {
+        const frameworkName = context.stack.framework?.toLowerCase();
+        if (stackStr && !(frameworkName && prompt.toLowerCase().includes(frameworkName))) {
           refined += `\n\nTech stack: ${stackStr}`;
         }
       }

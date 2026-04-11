@@ -43,9 +43,10 @@ async function sampleFiles(projectPath: string, max = 15): Promise<string[]> {
 function detectNamingConvention(names: string[]): ConventionInfo["namingConvention"] {
   let camel = 0, snake = 0, pascal = 0;
   for (const name of names) {
-    if (/^[a-z][a-zA-Z0-9]*$/.test(name)) camel++;
-    else if (/^[a-z][a-z0-9_]*$/.test(name)) snake++;
+    if (/^[a-z][a-zA-Z0-9]*[A-Z][a-zA-Z0-9]*$/.test(name)) camel++;
+    else if (/^[a-z][a-z0-9]*_[a-z0-9_]*$/.test(name)) snake++;
     else if (/^[A-Z][a-zA-Z0-9]*$/.test(name)) pascal++;
+    // Single lowercase words (foo, bar) are ambiguous — skip them
   }
   const total = camel + snake + pascal;
   if (total === 0) return "mixed";
@@ -84,7 +85,7 @@ export async function detectConventions(projectPath: string): Promise<Convention
   let semiCount = 0, noSemiCount = 0;
   let singleQuotes = 0, doubleQuotes = 0;
   let tabLines = 0, spaceLines = 0;
-  let indentSizes: number[] = [];
+  const indentSizes: number[] = [];
   let hasTests = false;
   let testLocation: ConventionInfo["testLocation"] = "colocated";
 
@@ -128,21 +129,23 @@ export async function detectConventions(projectPath: string): Promise<Convention
         if (/^(?:export\s+)?class\s+[A-Z]/.test(trimmed)) classCount++;
       }
 
-      // Test detection
-      if (filePath.includes("__tests__")) { hasTests = true; testLocation = "__tests__"; }
+      // Test detection — only set testLocation if not already detected from files
+      if (filePath.includes("__tests__")) { hasTests = true; if (testLocation === "colocated") testLocation = "__tests__"; }
       else if (filePath.includes(".test.") || filePath.includes(".spec.")) { hasTests = true; }
     } catch { /* skip unreadable files */ }
   }
 
-  // Check for test/ or tests/ directory
-  try {
-    await stat(join(projectPath, "test"));
-    testLocation = "test_dir";
-  } catch {
+  // Check for test/ or tests/ directory — only if no file-level detection set it
+  if (testLocation === "colocated") {
     try {
-      await stat(join(projectPath, "tests"));
+      await stat(join(projectPath, "test"));
       testLocation = "test_dir";
-    } catch { /* no test dir */ }
+    } catch {
+      try {
+        await stat(join(projectPath, "tests"));
+        testLocation = "test_dir";
+      } catch { /* no test dir */ }
+    }
   }
 
   const componentPattern = classCount > funcCount ? "class" as const
