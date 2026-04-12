@@ -12,7 +12,7 @@ ${gold}  ✦ ${bold}Promptly${reset}${gold} installed successfully${reset}
 ${dim}  Your prompts, refined before they land.${reset}
 
 ${green}  Get started:${reset}
-${dim}  $${reset} ${bold}promptly init${reset}       ${dim}Set up for Claude Code${reset}
+${dim}  $${reset} ${bold}promptly init${reset}       ${dim}Set up your AI agent${reset}
 ${dim}  $${reset} ${bold}promptly status${reset}     ${dim}Check configuration${reset}
 ${dim}  $${reset} ${bold}promptly --help${reset}     ${dim}View all commands${reset}
 
