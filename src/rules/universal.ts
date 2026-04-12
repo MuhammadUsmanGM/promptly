@@ -1,6 +1,9 @@
+import type { Intent } from "./intent.js";
+
 export interface Rule {
   name: string;
   description: string;
+  intents: Intent[] | "all";
   apply: (prompt: string, context: CodebaseContext) => string;
 }
 
@@ -35,15 +38,15 @@ export interface ConventionInfo {
 
 export interface StructureInfo {
   rootDirs: string[];
-  keyDirs: Record<string, string>; // dir path -> purpose
+  keyDirs: Record<string, string>;
   totalFiles: number;
-  tree: string; // formatted tree string
+  tree: string;
 }
 
 export interface DependencyInfo {
   production: DependencyEntry[];
   development: DependencyEntry[];
-  categories: Record<string, string[]>; // category -> package names
+  categories: Record<string, string[]>;
 }
 
 export interface DependencyEntry {
@@ -55,93 +58,97 @@ export interface DependencyEntry {
 export const universalRules: Rule[] = [
   {
     name: "specificity",
-    description: "Replace vague words with concrete specifics",
+    description: "Add tech stack context",
+    intents: ["create", "fix", "refactor", "configure", "generic"],
     apply: (prompt, context) => {
-      let refined = prompt;
+      if (!context.stack) return prompt;
 
-      // Add stack context if available
-      if (context.stack) {
-        const stackStr = [
-          context.stack.framework,
-          context.stack.language,
-          context.stack.styling,
-          context.stack.orm,
-        ]
-          .filter(Boolean)
-          .join(", ");
-        const frameworkName = context.stack.framework?.toLowerCase();
-        if (stackStr && !(frameworkName && prompt.toLowerCase().includes(frameworkName))) {
-          refined += `\n\nTech stack: ${stackStr}`;
-        }
+      const stackStr = [
+        context.stack.framework,
+        context.stack.language,
+        context.stack.styling,
+        context.stack.orm,
+      ]
+        .filter(Boolean)
+        .join(", ");
+      const frameworkName = context.stack.framework?.toLowerCase();
+      const alreadyMentioned = frameworkName && prompt.toLowerCase().includes(frameworkName);
+      if (stackStr && !alreadyMentioned) {
+        return prompt + `\n\nTech stack: ${stackStr}`;
       }
-
-      return refined;
+      return prompt;
     },
   },
   {
     name: "file_scope",
-    description: "Reference exact files and limit blast radius",
+    description: "Reference project structure for file location",
+    intents: ["create", "configure"],
     apply: (prompt, context) => {
-      let refined = prompt;
+      if (!context.structure) return prompt;
 
-      if (context.structure) {
-        const relevantDirs = Object.entries(context.structure.keyDirs)
-          .map(([dir, purpose]) => `  ${dir} — ${purpose}`)
-          .join("\n");
-        if (relevantDirs) {
-          refined += `\n\nProject structure:\n${relevantDirs}`;
-        }
+      const relevantDirs = Object.entries(context.structure.keyDirs)
+        .map(([dir, purpose]) => `  ${dir} — ${purpose}`)
+        .join("\n");
+      if (relevantDirs) {
+        return prompt + `\n\nProject structure:\n${relevantDirs}`;
       }
-
-      return refined;
+      return prompt;
     },
   },
   {
     name: "conventions",
     description: "Enforce existing code conventions",
+    intents: ["create", "refactor"],
     apply: (prompt, context) => {
-      let refined = prompt;
+      if (!context.conventions) return prompt;
 
-      if (context.conventions) {
-        const c = context.conventions;
-        const conventions = [
-          `Naming: ${c.namingConvention}`,
-          `File naming: ${c.fileNaming}`,
-          `Exports: ${c.exportStyle}`,
-          `Quotes: ${c.quotes}`,
-          c.semicolons ? "Semicolons: yes" : "Semicolons: no",
-          c.componentPattern ? `Components: ${c.componentPattern}` : null,
-          `Tests: ${c.testLocation}`,
-        ]
-          .filter(Boolean)
-          .join(", ");
-        refined += `\n\nFollow existing conventions: ${conventions}`;
-      }
-
-      return refined;
+      const c = context.conventions;
+      const conventions = [
+        `Naming: ${c.namingConvention}`,
+        `File naming: ${c.fileNaming}`,
+        `Exports: ${c.exportStyle}`,
+        `Quotes: ${c.quotes}`,
+        c.semicolons ? "Semicolons: yes" : "Semicolons: no",
+        c.componentPattern ? `Components: ${c.componentPattern}` : null,
+      ]
+        .filter(Boolean)
+        .join(", ");
+      return prompt + `\n\nFollow existing conventions: ${conventions}`;
     },
   },
   {
-    name: "constraints",
-    description: "Add hard constraints to prevent scope creep",
+    name: "constraints_create",
+    description: "Constraints for creating new code",
+    intents: ["create"],
     apply: (prompt) => {
-      return (
-        prompt +
-        "\n\nConstraints: Preserve existing patterns. Do not install new packages unless explicitly requested. Do not break existing tests. Match existing code style. Minimize files changed."
-      );
+      return prompt + "\n\nConstraints: Use existing patterns and utilities already in the codebase. Do not install new packages unless explicitly requested. Match existing code style.";
+    },
+  },
+  {
+    name: "constraints_fix",
+    description: "Constraints for bug fixes — minimal touch",
+    intents: ["fix"],
+    apply: (prompt) => {
+      return prompt + "\n\nConstraints: Touch minimal files. Do not refactor unrelated code. Do not change behavior beyond the fix. Preserve existing tests.";
+    },
+  },
+  {
+    name: "constraints_refactor",
+    description: "Constraints for refactoring — no behavior change",
+    intents: ["refactor"],
+    apply: (prompt) => {
+      return prompt + "\n\nConstraints: Do not change external behavior. All existing tests must still pass. Do not rename public APIs unless explicitly requested.";
     },
   },
   {
     name: "success_criteria",
-    description: "Define what done looks like",
+    description: "Define verification steps",
+    intents: ["create", "fix", "refactor", "configure"],
     apply: (prompt, context) => {
-      let refined = prompt;
-
       if (context.stack?.testRunner) {
-        refined += `\n\nVerify by running tests with ${context.stack.testRunner}.`;
+        return prompt + `\n\nVerify by running tests with ${context.stack.testRunner}.`;
       }
-
-      return refined;
+      return prompt;
     },
   },
 ];

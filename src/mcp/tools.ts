@@ -77,15 +77,15 @@ Returns a refined prompt. Execute it instead of the original.`,
           log("cache hit");
         }
 
-        const { refined, rulesApplied } = refinePrompt(raw_prompt, context, agent as Agent);
+        const { refined, rulesApplied, intent } = refinePrompt(raw_prompt, context, agent as Agent);
         const compactContext = formatCompact(context);
-        log(`done — rules: ${rulesApplied.join(", ") || "none"}`);
+        log(`done — intent=${intent}, rules: ${rulesApplied.join(", ") || "none"}`);
 
         // Compact output: refined prompt + one-line context summary
         return {
           content: [{
             type: "text" as const,
-            text: `${refined}\n\n---\n[Promptly] ${rulesApplied.length} rules applied. Context:\n${compactContext}`,
+            text: `${refined}\n\n---\n[Promptly] intent: ${intent} | ${rulesApplied.length} rules applied\n${compactContext}`,
           }],
         };
       } catch (error) {
