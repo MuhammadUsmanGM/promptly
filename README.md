@@ -22,13 +22,13 @@ Promptly is an MCP server that analyzes your codebase and refines your coding pr
 ```
 You type a prompt
        ↓
-Claude calls Promptly's MCP tools
+Your AI agent calls Promptly's MCP tools
        ↓
 Promptly scans your project (stack, conventions, structure, deps)
        ↓
 Promptly refines your prompt with real codebase context
        ↓
-Claude executes the refined, context-aware version
+Your agent executes the refined, context-aware version
 ```
 
 No external API call. No latency from a second model. Your agent just becomes more accurate when Promptly is connected.
@@ -60,16 +60,16 @@ Or without global install:
 npx @promptly-ai/cli init
 ```
 
-That's it. Restart Claude Code and Promptly is active.
+That's it. Select your agent (Claude Code, Cursor, or Gemini CLI), choose the scope, and restart your agent.
 
 ---
 
 ## CLI Commands
 
 ```bash
-promptly init          # Set up Promptly for Claude Code
-promptly mcp           # Start MCP server (called by Claude Code automatically)
-promptly status        # Check if Promptly is configured
+promptly init          # Set up Promptly (Claude Code, Cursor, or Gemini CLI)
+promptly mcp           # Start MCP server (called automatically by your agent)
+promptly status        # Check which agents are configured
 promptly rules [agent] # Print refinement rules (claude_code|cursor|gemini_cli|generic)
 promptly --version     # Print version
 ```
@@ -80,7 +80,7 @@ promptly --version     # Print version
 
 ### `refine_prompt`
 
-The main tool. Analyzes your codebase and refines the prompt in a single call. Scans stack, conventions, structure, and dependencies, then returns a context-aware refined prompt. Results are cached for 5 minutes to avoid re-scanning.
+The main tool. Analyzes your codebase and refines the prompt in a single call. Scans stack, conventions, structure, and dependencies, then returns a context-aware refined prompt. Results are cached for 30 minutes and automatically invalidated when `package.json` or `tsconfig.json` changes.
 
 Example output:
 ```
@@ -105,7 +105,17 @@ Returns the current ruleset. Only called if the user asks how Promptly works.
 
 | Agent | `promptly init` | Rules | Codebase Analysis |
 |-------|-----------------|-------|-------------------|
-| **Claude Code** | Yes | Full agent-specific rules | Full |
+| **Claude Code** | ✔ | Full agent-specific rules | Full |
+| **Cursor** | ✔ | Agent-specific rules | Full |
+| **Gemini CLI** | ✔ | Agent-specific rules | Full |
+
+### Setup Details
+
+| Agent | MCP Config | Instruction File |
+|-------|-----------|-----------------|
+| Claude Code | `~/.claude/settings.json` | `CLAUDE.md` (global or project) |
+| Cursor | `.cursor/mcp.json` (global or project) | `.cursorrules` (project) |
+| Gemini CLI | `~/.gemini/settings.json` (global or project) | `GEMINI.md` (global or project) |
 
 ---
 
@@ -148,12 +158,13 @@ node dist/bin/promptly.js rules claude_code
 
 Promptly applies rules in sequence, each one enriching the prompt:
 
-1. **Specificity** — Adds concrete tech stack context
-2. **File Scope** — References project structure and key directories
-3. **Conventions** — Enforces detected code style (naming, quotes, exports)
-4. **Constraints** — Adds guardrails (no unnecessary packages, preserve patterns)
-5. **Success Criteria** — Defines verification steps
-6. **Agent-Specific** — Imperative mood, numbered steps, test reminders (varies by agent)
+1. **Intent Detection** — Classifies prompt as create, fix, refactor, explain, or configure
+2. **Stack Injection** — Adds concrete tech stack context (only if not already mentioned)
+3. **File Relevance** — Scans project files and injects paths likely relevant to the prompt
+4. **Conventions** — Enforces detected code style with confidence scoring (only injects high-confidence conventions)
+5. **Constraints** — Adds guardrails contextually (skips "no new packages" if user explicitly asks to install)
+6. **Success Criteria** — Defines verification steps (test runner, existing tests)
+7. **Agent-Specific** — Imperative mood, numbered steps, test reminders (varies by agent)
 
 ---
 

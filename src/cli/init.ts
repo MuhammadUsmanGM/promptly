@@ -1,14 +1,45 @@
 import { readFile, writeFile, mkdir } from "node:fs/promises";
-import { join } from "node:path";
+import { join, dirname } from "node:path";
 import { homedir } from "node:os";
 import select from "@inquirer/select";
 
-interface ClaudeSettings {
-  mcpServers?: Record<string, { command: string; args?: string[] }>;
-  [key: string]: unknown;
+// --- Agent definitions ---
+
+type AgentId = "claude_code" | "cursor" | "gemini_cli";
+
+interface AgentConfig {
+  label: string;
+  mcpConfig: { global: string; project?: string };
+  instructions: { global?: string; project: string };
+  restartMsg: string;
 }
 
-const PROMPTLY_CLAUDE_MD = `# Promptly — Automatic Prompt Refinement
+const home = homedir();
+
+const AGENTS: Record<AgentId, AgentConfig> = {
+  claude_code: {
+    label: "Claude Code",
+    mcpConfig: { global: join(home, ".claude", "settings.json") },
+    instructions: { global: join(home, ".claude", "CLAUDE.md"), project: "CLAUDE.md" },
+    restartMsg: "Restart Claude Code and Promptly will be active.",
+  },
+  cursor: {
+    label: "Cursor",
+    mcpConfig: { global: join(home, ".cursor", "mcp.json"), project: join(".cursor", "mcp.json") },
+    instructions: { project: ".cursorrules" },
+    restartMsg: "Restart Cursor and Promptly will be active.",
+  },
+  gemini_cli: {
+    label: "Gemini CLI",
+    mcpConfig: { global: join(home, ".gemini", "settings.json"), project: join(".gemini", "settings.json") },
+    instructions: { global: join(home, ".gemini", "GEMINI.md"), project: "GEMINI.md" },
+    restartMsg: "Restart Gemini CLI and Promptly will be active.",
+  },
+};
+
+// --- Shared instruction content ---
+
+const PROMPTLY_INSTRUCTIONS = `# Promptly — Automatic Prompt Refinement
 
 Before writing ANY code, creating ANY file, or making ANY change, call the \`refine_prompt\` MCP tool with \`raw_prompt\` (the user's prompt) and \`project_path\` (the project root). Execute the returned refined prompt instead of the original.
 
@@ -17,93 +48,135 @@ Use for: writing, fixing, refactoring, explaining, configuring code. Skip for: g
 After refinement, start your response with "✦ Refined by Promptly" on its own line.
 `;
 
-export async function init() {
-  // Step 1: Ask where to store instructions
-  const scope = await select({
-    message: "Where should Promptly store its instructions?",
-    choices: [
-      {
-        name: "Global (all projects)",
-        value: "global" as const,
-        description: "~/.claude/CLAUDE.md — Promptly is active everywhere",
-      },
-      {
-        name: "This project only",
-        value: "project" as const,
-        description: "./CLAUDE.md — Promptly is active only in this directory",
-      },
-    ],
-  });
+// --- Helpers ---
 
-  // Step 2: Write MCP server config to settings.json
-  const claudeDir = join(homedir(), ".claude");
-  const settingsPath = join(claudeDir, "settings.json");
-
-  let settings: ClaudeSettings = {};
+async function writeMcpConfig(configPath: string): Promise<boolean> {
+  let settings: Record<string, unknown> = {};
   try {
-    const raw = await readFile(settingsPath, "utf-8");
+    const raw = await readFile(configPath, "utf-8");
     settings = JSON.parse(raw);
   } catch (error) {
     if (error instanceof SyntaxError) {
-      console.error("  \x1b[31m✖ ~/.claude/settings.json contains invalid JSON. Please fix it manually.\x1b[0m");
+      console.error(`  \x1b[31m✖ ${configPath} contains invalid JSON. Please fix it manually.\x1b[0m`);
       process.exit(1);
     }
     // File doesn't exist — will create fresh
   }
 
-  if (!settings.mcpServers) settings.mcpServers = {};
-
-  if (!settings.mcpServers["promptly"]) {
-    settings.mcpServers["promptly"] = {
-      command: "npx",
-      args: ["-y", "@promptly-ai/cli", "mcp"],
-    };
-
-    await mkdir(claudeDir, { recursive: true });
-    await writeFile(settingsPath, JSON.stringify(settings, null, 2) + "\n");
-    console.log("");
-    console.log("  ✦ MCP server added to Claude Code settings.");
-  } else {
-    console.log("");
-    console.log("  ✦ MCP server already configured.");
+  if (!settings.mcpServers || typeof settings.mcpServers !== "object") {
+    settings.mcpServers = {};
   }
 
-  // Step 3: Write CLAUDE.md instructions
-  if (scope === "global") {
-    const claudeMdPath = join(claudeDir, "CLAUDE.md");
-    let existing = "";
-    try {
-      existing = await readFile(claudeMdPath, "utf-8");
-    } catch {
-      // No existing file
-    }
+  const servers = settings.mcpServers as Record<string, unknown>;
 
-    if (existing.includes("Promptly")) {
-      console.log("  ✦ Promptly instructions already in global CLAUDE.md.");
-    } else {
-      const updated = existing ? existing + "\n" + PROMPTLY_CLAUDE_MD : PROMPTLY_CLAUDE_MD;
-      await writeFile(claudeMdPath, updated);
-      console.log(`  ✦ Instructions written to ${claudeMdPath}`);
-    }
+  if (servers["promptly"]) {
+    console.log("  ✦ MCP server already configured.");
+    return false;
+  }
+
+  servers["promptly"] = {
+    command: "npx",
+    args: ["-y", "@promptly-ai/cli", "mcp"],
+  };
+
+  await mkdir(dirname(configPath), { recursive: true });
+  await writeFile(configPath, JSON.stringify(settings, null, 2) + "\n");
+  console.log("  ✦ MCP server added to settings.");
+  return true;
+}
+
+async function writeInstructionFile(filePath: string): Promise<void> {
+  let existing = "";
+  try {
+    existing = await readFile(filePath, "utf-8");
+  } catch {
+    // No existing file
+  }
+
+  if (existing.includes("Promptly")) {
+    console.log(`  ✦ Promptly instructions already in ${filePath}`);
+    return;
+  }
+
+  const updated = existing ? existing + "\n" + PROMPTLY_INSTRUCTIONS : PROMPTLY_INSTRUCTIONS;
+  await mkdir(dirname(filePath), { recursive: true });
+  await writeFile(filePath, updated);
+  console.log(`  ✦ Instructions written to ${filePath}`);
+}
+
+// --- Main init ---
+
+export async function init() {
+  // Step 1: Select agent
+  const agentId = await select<AgentId>({
+    message: "Which AI coding agent are you using?",
+    choices: [
+      { name: "Claude Code", value: "claude_code", description: "Anthropic's CLI agent" },
+      { name: "Cursor", value: "cursor", description: "AI-powered code editor" },
+      { name: "Gemini CLI", value: "gemini_cli", description: "Google's CLI agent" },
+    ],
+  });
+
+  const agent = AGENTS[agentId];
+
+  // Step 2: Select scope
+  const hasGlobalInstructions = !!agent.instructions.global;
+  const hasProjectMcp = !!agent.mcpConfig.project;
+
+  const scope = await select<"global" | "project">({
+    message: "Where should Promptly be active?",
+    choices: [
+      {
+        name: "Global (all projects)",
+        value: "global" as const,
+        description: hasGlobalInstructions
+          ? `MCP + instructions applied everywhere`
+          : `MCP config applied globally, instructions per-project`,
+      },
+      ...(hasProjectMcp
+        ? [{
+            name: "This project only",
+            value: "project" as const,
+            description: "MCP + instructions scoped to this directory",
+          }]
+        : []),
+      // Claude Code MCP is always global, but instructions can be project-scoped
+      ...(!hasProjectMcp
+        ? [{
+            name: "This project only",
+            value: "project" as const,
+            description: "MCP is global, instructions scoped to this directory",
+          }]
+        : []),
+    ],
+  });
+
+  console.log("");
+
+  // Step 3: Write MCP config
+  if (scope === "project" && agent.mcpConfig.project) {
+    // Project-scoped MCP config
+    const projectMcpPath = join(process.cwd(), agent.mcpConfig.project);
+    await writeMcpConfig(projectMcpPath);
   } else {
-    const claudeMdPath = join(process.cwd(), "CLAUDE.md");
-    let existing = "";
-    try {
-      existing = await readFile(claudeMdPath, "utf-8");
-    } catch {
-      // No existing file
-    }
+    // Global MCP config (Claude Code is always global)
+    await writeMcpConfig(agent.mcpConfig.global);
+  }
 
-    if (existing.includes("Promptly")) {
-      console.log("  ✦ Promptly instructions already in project CLAUDE.md.");
-    } else {
-      const updated = existing ? existing + "\n" + PROMPTLY_CLAUDE_MD : PROMPTLY_CLAUDE_MD;
-      await writeFile(claudeMdPath, updated);
-      console.log(`  ✦ Instructions written to ${claudeMdPath}`);
+  // Step 4: Write instruction file
+  if (scope === "global" && agent.instructions.global) {
+    await writeInstructionFile(agent.instructions.global);
+  } else {
+    const projectInstructionPath = join(process.cwd(), agent.instructions.project);
+    await writeInstructionFile(projectInstructionPath);
+
+    // Cursor special case: global MCP but instructions are always per-project
+    if (scope === "global" && !agent.instructions.global) {
+      console.log(`  \x1b[33mℹ\x1b[0m ${agent.label} instructions are per-project. Add ${agent.instructions.project} to each project.`);
     }
   }
 
   console.log("");
-  console.log("  ✦ Done! Restart Claude Code and Promptly will be active.");
+  console.log(`  ✦ Done! ${agent.restartMsg}`);
   console.log("");
 }
