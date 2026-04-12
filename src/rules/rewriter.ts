@@ -75,8 +75,11 @@ function rewriteCreate(raw: string, ctx: CodebaseContext, agent: Agent): string 
     parts.push(testHint);
   }
 
-  // Package constraint
-  parts.push("Do not install new packages unless explicitly requested.");
+  // Package constraint — skip if the user is explicitly asking to install something
+  const installWords = /\b(install|add\s+package|add\s+dep|set\s*up|integrate)\b/i;
+  if (!installWords.test(raw)) {
+    parts.push("Do not install new packages unless explicitly requested.");
+  }
 
   return parts.filter(Boolean).join(" ");
 }
