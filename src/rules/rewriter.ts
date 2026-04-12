@@ -174,14 +174,27 @@ function rewriteConfigure(raw: string, ctx: CodebaseContext, agent: Agent): stri
 }
 
 function rewriteGeneric(raw: string, ctx: CodebaseContext, agent: Agent): string {
-  // Light touch — just add stack context if missing
+  const parts: string[] = [];
+
   let action = ensureImperative(raw, agent);
 
   if (ctx.stack?.framework && !mentionsAny(raw, [ctx.stack.framework])) {
-    action = `${action} (${ctx.stack.framework} project, ${ctx.stack.language ?? ""})`.replace(/, \)/, ")");
+    action = `${action} (${ctx.stack.framework}, ${ctx.stack.language ?? ""})`.replace(/, \)/, ")");
+  }
+  parts.push(action);
+
+  // Point to relevant files if any match
+  const relevantFiles = findRelevantFiles(raw, ctx.structure);
+  if (relevantFiles.length > 0) {
+    parts.push(`Relevant files: ${relevantFiles.join(", ")}.`);
   }
 
-  return action;
+  // Apply style conventions if confident
+  if (ctx.conventions) {
+    parts.push(formatConventionsAsInstructions(ctx.conventions, "style_only"));
+  }
+
+  return parts.filter(Boolean).join(" ");
 }
 
 // --- Convention scoping ---
@@ -201,7 +214,26 @@ function ensureImperative(prompt: string, agent: Agent): string {
   ];
   const firstWord = prompt.trim().split(/\s/)[0].toLowerCase();
   if (imperative.includes(firstWord)) return prompt;
-  return `Task: ${prompt}`;
+
+  // Try to extract the actual action from conversational phrasing
+  // "I need a login form" → "Create a login form"
+  // "can you add dark mode" → "add dark mode"
+  // "we should refactor auth" → "refactor auth"
+  const actionMatch = prompt.match(
+    /\b(create|add|fix|refactor|update|remove|delete|implement|build|write|move|rename|extract|replace|configure|set up|install)\b\s+(.+)/i,
+  );
+  if (actionMatch) {
+    return `${actionMatch[1].charAt(0).toUpperCase() + actionMatch[1].slice(1)} ${actionMatch[2]}`;
+  }
+
+  // "I need X" / "I want X" → "Create X"
+  const needMatch = prompt.match(/\b(?:i\s+)?(?:need|want)\s+(?:a\s+|an\s+|the\s+)?(.+)/i);
+  if (needMatch) {
+    return `Create ${needMatch[1]}`;
+  }
+
+  // No rewrite possible — return as-is rather than ugly "Task:" prefix
+  return prompt;
 }
 
 function mentionsAny(text: string, terms: string[]): boolean {
@@ -342,8 +374,10 @@ function findRelevantFiles(
     }
   }
 
-  // Return top results, sorted by score descending, capped at 8
+  // Return top results, filtered by minimum score, sorted descending, capped at 8
+  const MIN_SCORE = 2;
   return [...scored.entries()]
+    .filter(([, score]) => score >= MIN_SCORE)
     .sort((a, b) => b[1] - a[1])
     .slice(0, 8)
     .map(([path]) => path);
