@@ -1,113 +1,119 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { analyzeCodebase } from "../analyzer/index.js";
-import { refinePrompt, getRulesDescription, type Agent } from "../rules/index.js";
-import { VERSION } from "../cli/banner.js";
+import { refinePrompt, getRulesDescription, type Agent, type CodebaseContext } from "../rules/index.js";
+
+// Cache analysis per project path to avoid re-scanning every prompt
+const analysisCache = new Map<string, { context: CodebaseContext; timestamp: number }>();
+const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
+function getCachedAnalysis(projectPath: string): CodebaseContext | null {
+  const cached = analysisCache.get(projectPath);
+  if (cached && Date.now() - cached.timestamp < CACHE_TTL) return cached.context;
+  return null;
+}
+
+function formatCompact(context: CodebaseContext): string {
+  const parts: string[] = [];
+
+  if (context.stack) {
+    const s = context.stack;
+    const stack = [s.framework, s.language, s.styling, s.orm, s.testRunner]
+      .filter(Boolean).join(", ");
+    parts.push(`Stack: ${stack} | pkg: ${s.packageManager}${s.runtime ? ` | ${s.runtime}` : ""}`);
+  }
+
+  if (context.conventions) {
+    const c = context.conventions;
+    parts.push(`Style: ${c.namingConvention} vars, ${c.fileNaming} files, ${c.quotes} quotes, ${c.semicolons ? "semi" : "no-semi"}, ${c.exportStyle} exports${c.componentPattern ? `, ${c.componentPattern} components` : ""}, tests: ${c.testLocation}`);
+  }
+
+  if (context.structure?.keyDirs) {
+    const dirs = Object.entries(context.structure.keyDirs)
+      .map(([d, p]) => `${d}(${p})`)
+      .join(", ");
+    if (dirs) parts.push(`Dirs: ${dirs}`);
+  }
+
+  if (context.dependencies?.categories) {
+    const cats = Object.entries(context.dependencies.categories)
+      .map(([cat, pkgs]) => `${cat}: ${pkgs.join(", ")}`)
+      .join(" | ");
+    if (cats) parts.push(`Deps: ${cats}`);
+  }
+
+  return parts.join("\n");
+}
 
 export function registerTools(server: McpServer, debug = false) {
   const log = debug
     ? (...args: unknown[]) => console.error("[promptly]", ...args)
     : () => {};
 
-  // Tool 1: analyze_codebase — the real value
-  server.tool(
-    "analyze_codebase",
-    `Analyzes the project at the given path and returns structured context about the tech stack, code conventions, file structure, and dependencies. Call this before refining a prompt to understand what you're working with.`,
-    {
-      project_path: z.string().describe("Absolute path to the project root directory"),
-      depth: z.number().optional().default(3).describe("How deep to scan the file tree (default 3)"),
-    },
-    async ({ project_path, depth }) => {
-      log(`analyze_codebase called — path=${project_path}, depth=${depth}`);
-      try {
-        const context = await analyzeCodebase(project_path, depth);
-        log(`analyze_codebase done — stack=${context.stack?.framework ?? "unknown"}, files=${context.structure?.totalFiles ?? 0}`);
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(context, null, 2),
-            },
-          ],
-        };
-      } catch (error) {
-        log(`analyze_codebase error —`, error);
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: `Error analyzing codebase: ${error instanceof Error ? error.message : String(error)}`,
-            },
-          ],
-          isError: true,
-        };
-      }
-    },
-  );
-
-  // Tool 2: refine_prompt — applies rules + context
+  // Single tool: analyze + refine in one call
   server.tool(
     "refine_prompt",
-    `Refines a coding prompt using Promptly's rules and optional codebase context.
+    `Analyzes the codebase and refines a coding prompt in one step. Call this for any coding task — it scans the project's stack, conventions, structure, and dependencies, then rewrites the prompt with that context baked in.
 
-    WHEN TO CALL: Any prompt asking to write, fix, refactor, or explain code. Any prompt involving files, components, functions, APIs, or databases.
-    DO NOT CALL: For general questions, math, writing, or casual chat.
+WHEN TO CALL: Any prompt to write, fix, refactor, explain, or configure code.
+SKIP FOR: General chat, math, non-coding questions.
 
-    For best results, call analyze_codebase first and pass the result as codebase_context.
-    Returns the refined prompt that you should execute instead of the original.`,
+Returns a refined prompt. Execute it instead of the original.`,
     {
-      raw_prompt: z.string().describe("The original unmodified prompt from the user"),
-      codebase_context: z.string().optional().describe("JSON string from analyze_codebase output"),
-      agent: z.enum(["claude_code", "cursor", "gemini_cli", "generic"]).optional().default("claude_code").describe("Which agent is being used"),
+      raw_prompt: z.string().describe("The user's original prompt"),
+      project_path: z.string().describe("Absolute path to the project root"),
+      agent: z.enum(["claude_code", "cursor", "gemini_cli", "generic"]).optional().default("claude_code"),
     },
-    async ({ raw_prompt, codebase_context, agent }) => {
-      log(`refine_prompt called — agent=${agent}, prompt="${raw_prompt.slice(0, 80)}..."`);
-      let context = {};
-      if (codebase_context) {
-        try {
-          context = JSON.parse(codebase_context);
-        } catch { /* use empty context */ }
-      }
+    async ({ raw_prompt, project_path, agent }) => {
+      log(`refine_prompt called — path=${project_path}, agent=${agent}`);
+      try {
+        // Use cached analysis if fresh, otherwise scan
+        let context = getCachedAnalysis(project_path);
+        if (!context) {
+          log("cache miss — analyzing codebase");
+          context = await analyzeCodebase(project_path, 3);
+          analysisCache.set(project_path, { context, timestamp: Date.now() });
+        } else {
+          log("cache hit");
+        }
 
-      const { refined, rulesApplied } = refinePrompt(raw_prompt, context, agent as Agent);
-      log(`refine_prompt done — rules applied: ${rulesApplied.join(", ") || "none"}`);
+        const { refined, rulesApplied } = refinePrompt(raw_prompt, context, agent as Agent);
+        const compactContext = formatCompact(context);
+        log(`done — rules: ${rulesApplied.join(", ") || "none"}`);
 
-      return {
-        content: [
-          {
+        // Compact output: refined prompt + one-line context summary
+        return {
+          content: [{
             type: "text" as const,
-            text: JSON.stringify({
-              refined_prompt: refined,
-              rules_applied: rulesApplied,
-              original_prompt: raw_prompt,
-              _promptly: {
-                version: VERSION,
-                note: "Start your response with: ✦ Refined by Promptly — then execute the refined_prompt above, not the original.",
-              },
-            }, null, 2),
-          },
-        ],
-      };
+            text: `${refined}\n\n---\n[Promptly] ${rulesApplied.length} rules applied. Context:\n${compactContext}`,
+          }],
+        };
+      } catch (error) {
+        log("error —", error);
+        // On failure, return original prompt so Claude can still proceed
+        return {
+          content: [{
+            type: "text" as const,
+            text: raw_prompt,
+          }],
+        };
+      }
     },
   );
 
-  // Tool 3: get_refinement_rules — reference/transparency
+  // Lightweight reference tool — only called if user asks about Promptly
   server.tool(
     "get_refinement_rules",
-    `Returns the current Promptly refinement rules for the specified agent. Call this if the user asks how Promptly works or if you need a refresher on the rules.`,
+    `Returns Promptly's rules. Only call if the user asks how Promptly works.`,
     {
-      agent: z.enum(["claude_code", "cursor", "gemini_cli", "generic"]).optional().default("generic").describe("Which agent to get rules for"),
+      agent: z.enum(["claude_code", "cursor", "gemini_cli", "generic"]).optional().default("generic"),
     },
     async ({ agent }) => {
-      log(`get_refinement_rules called — agent=${agent}`);
-      const description = getRulesDescription(agent as Agent);
       return {
-        content: [
-          {
-            type: "text" as const,
-            text: description,
-          },
-        ],
+        content: [{
+          type: "text" as const,
+          text: getRulesDescription(agent as Agent),
+        }],
       };
     },
   );

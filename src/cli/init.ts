@@ -10,29 +10,11 @@ interface ClaudeSettings {
 
 const PROMPTLY_CLAUDE_MD = `# Promptly — Automatic Prompt Refinement
 
-You have access to Promptly MCP tools. These are MANDATORY for all coding tasks.
+Before writing ANY code, creating ANY file, or making ANY change, call the \`refine_prompt\` MCP tool with \`raw_prompt\` (the user's prompt) and \`project_path\` (the project root). Execute the returned refined prompt instead of the original.
 
-## Rules (non-negotiable)
+Use for: writing, fixing, refactoring, explaining, configuring code. Skip for: general chat, math, non-coding questions.
 
-Before writing ANY code, creating ANY file, or making ANY change, you MUST follow this exact sequence:
-
-1. Call the \`analyze_codebase\` MCP tool with the project root path as \`project_path\`.
-2. Take the JSON output from step 1 and pass it as \`codebase_context\` to the \`refine_prompt\` MCP tool, along with the user's original prompt as \`raw_prompt\`.
-3. Read the \`refined_prompt\` from the response.
-4. Execute the refined prompt instead of the original.
-
-## When to use
-
-ALWAYS use for: creating files, writing code, fixing bugs, refactoring, adding features, configuring tools, updating dependencies, writing tests, explaining code.
-
-NEVER use for: general conversation, math, non-coding questions.
-
-## Important
-
-- Do NOT skip these tools to save time. The refinement adds critical project context.
-- Do NOT proceed with coding before completing both tool calls.
-- After refinement, start your response with "✦ Refined by Promptly" on its own line.
-- If a tool call fails, proceed with the original prompt but note the failure.
+After refinement, start your response with "✦ Refined by Promptly" on its own line.
 `;
 
 export async function init() {

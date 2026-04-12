@@ -78,53 +78,26 @@ promptly --version     # Print version
 
 ## MCP Tools
 
-Promptly exposes 3 tools via MCP:
-
-### `analyze_codebase`
-
-Scans your project and returns structured context:
-
-```json
-{
-  "stack": {
-    "language": "TypeScript",
-    "framework": "Next.js 14.1.0",
-    "styling": "Tailwind CSS",
-    "orm": "Prisma",
-    "packageManager": "pnpm",
-    "testRunner": "Vitest"
-  },
-  "conventions": {
-    "namingConvention": "camelCase",
-    "fileNaming": "kebab-case",
-    "exportStyle": "named",
-    "quotes": "single",
-    "semicolons": false
-  },
-  "structure": {
-    "keyDirs": {
-      "src/components": "UI components",
-      "src/hooks": "Custom hooks",
-      "src/lib": "Library/shared code"
-    }
-  },
-  "dependencies": {
-    "categories": {
-      "UI Framework": ["react"],
-      "State": ["zustand"],
-      "Testing": ["vitest", "@testing-library/react"]
-    }
-  }
-}
-```
-
 ### `refine_prompt`
 
-Takes your raw prompt + codebase context, returns a refined version with rules applied.
+The main tool. Analyzes your codebase and refines the prompt in a single call. Scans stack, conventions, structure, and dependencies, then returns a context-aware refined prompt. Results are cached for 5 minutes to avoid re-scanning.
+
+Example output:
+```
+Create a new React functional component LoginForm in src/components/
+using TypeScript, Tailwind CSS for styling...
+
+---
+[Promptly] 6 rules applied. Context:
+Stack: Next.js 14.1.0, TypeScript, Tailwind CSS, Prisma | pkg: pnpm
+Style: camelCase vars, kebab-case files, single quotes, no-semi, named exports, functional components, tests: colocated
+Dirs: src/components(UI components), src/hooks(Custom hooks), src/lib(Library/shared code)
+Deps: UI Framework: react | State: zustand | Testing: vitest, @testing-library/react
+```
 
 ### `get_refinement_rules`
 
-Returns the current ruleset for transparency.
+Returns the current ruleset. Only called if the user asks how Promptly works.
 
 ---
 
