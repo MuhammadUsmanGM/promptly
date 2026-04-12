@@ -32,6 +32,7 @@ export interface StructureInfo {
   keyDirs: Record<string, string>;
   totalFiles: number;
   tree: string;
+  files: string[]; // relative paths of source files (capped)
 }
 
 export interface DependencyInfo {

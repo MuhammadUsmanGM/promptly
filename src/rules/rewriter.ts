@@ -18,7 +18,7 @@ export function rewritePrompt(
     case "refactor":
       return rewriteRefactor(raw, context, agent);
     case "explain":
-      return raw; // explain prompts pass through untouched
+      return rewriteExplain(raw, context);
     case "configure":
       return rewriteConfigure(raw, context, agent);
     case "generic":
@@ -47,10 +47,16 @@ function rewriteCreate(raw: string, ctx: CodebaseContext, agent: Agent): string 
 
   // File location guidance from structure
   if (ctx.structure?.keyDirs && Object.keys(ctx.structure.keyDirs).length > 0) {
-    const relevant = guessRelevantDirs(raw, ctx.structure.keyDirs);
-    if (relevant) {
-      parts.push(`Place files in ${relevant}.`);
+    const targetDir = findRelevantDir(raw, ctx.structure.keyDirs);
+    if (targetDir) {
+      parts.push(`Place files in ${targetDir}.`);
     }
+  }
+
+  // Relevant existing files the agent should be aware of
+  const relevantFiles = findRelevantFiles(raw, ctx.structure);
+  if (relevantFiles.length > 0) {
+    parts.push(`Relevant existing files: ${relevantFiles.join(", ")}.`);
   }
 
   // Concrete conventions — baked into instructions, not a list
@@ -86,6 +92,12 @@ function rewriteFix(raw: string, ctx: CodebaseContext, agent: Agent): string {
   }
   parts.push(action);
 
+  // Point the agent to likely relevant files
+  const relevantFiles = findRelevantFiles(raw, ctx.structure);
+  if (relevantFiles.length > 0) {
+    parts.push(`Start investigating in: ${relevantFiles.join(", ")}.`);
+  }
+
   parts.push("Touch only the files necessary for the fix. Do not refactor surrounding code. Do not change unrelated behavior. Preserve all existing tests.");
 
   if (ctx.stack?.testRunner) {
@@ -101,6 +113,12 @@ function rewriteRefactor(raw: string, ctx: CodebaseContext, agent: Agent): strin
   let action = ensureImperative(raw, agent);
   parts.push(action);
 
+  // Point to files likely involved in the refactor
+  const relevantFiles = findRelevantFiles(raw, ctx.structure);
+  if (relevantFiles.length > 0) {
+    parts.push(`Likely files to refactor: ${relevantFiles.join(", ")}.`);
+  }
+
   // Code style matters for refactoring, but not file naming
   if (ctx.conventions) {
     parts.push(formatConventionsAsInstructions(ctx.conventions, "style_only"));
@@ -113,6 +131,12 @@ function rewriteRefactor(raw: string, ctx: CodebaseContext, agent: Agent): strin
   }
 
   return parts.filter(Boolean).join(" ");
+}
+
+function rewriteExplain(raw: string, ctx: CodebaseContext): string {
+  const relevantFiles = findRelevantFiles(raw, ctx.structure);
+  if (relevantFiles.length === 0) return raw;
+  return `${raw} Relevant files to look at: ${relevantFiles.join(", ")}.`;
 }
 
 function rewriteConfigure(raw: string, ctx: CodebaseContext, agent: Agent): string {
@@ -182,32 +206,149 @@ function mentionsAny(text: string, terms: string[]): boolean {
   return terms.some((t) => t && lower.includes(t.toLowerCase()));
 }
 
-function guessRelevantDirs(prompt: string, keyDirs: Record<string, string>): string | null {
+// --- File relevance detection ---
+
+// Maps prompt keywords to directory purposes (for dir-level matching)
+const DIR_HINTS: Record<string, string[]> = {
+  "component": ["UI components", "components"],
+  "page": ["Pages", "Page components"],
+  "hook": ["Custom hooks"],
+  "util": ["Utility functions"],
+  "api": ["API layer"],
+  "route": ["Route definitions"],
+  "service": ["Service layer"],
+  "model": ["Data models"],
+  "schema": ["Validation schemas"],
+  "middleware": ["Middleware"],
+  "style": ["Stylesheets"],
+  "test": ["Tests"],
+  "config": ["Configuration"],
+  "migration": ["Database migrations"],
+  "database": ["Database layer"],
+  "store": ["State management"],
+  "type": ["Type definitions"],
+};
+
+// Domain keywords that appear in filenames (e.g., "auth" → auth.ts, useAuth.ts, AuthProvider.tsx)
+const DOMAIN_KEYWORDS = [
+  "auth", "login", "signup", "register", "session", "token",
+  "user", "profile", "account", "settings", "preferences",
+  "cart", "checkout", "payment", "order", "invoice",
+  "dashboard", "admin", "analytics",
+  "nav", "navbar", "header", "footer", "sidebar", "layout",
+  "modal", "dialog", "form", "table", "list",
+  "notification", "email", "message", "chat",
+  "search", "filter", "sort", "pagination",
+  "upload", "image", "file", "media",
+  "theme", "dark", "light",
+  "error", "loading", "skeleton",
+  "database", "db", "prisma", "migration",
+  "api", "fetch", "http", "client", "server",
+  "middleware", "guard", "interceptor",
+  "route", "router", "redirect",
+  "store", "state", "context", "provider", "reducer",
+];
+
+function extractPromptKeywords(prompt: string): string[] {
   const lower = prompt.toLowerCase();
+  // Split into actual words (min 3 chars to avoid noise)
+  const words = lower.split(/[\s,.\-_/()]+/).filter((w) => w.length >= 3);
 
-  // Map prompt keywords to directory purposes
-  const hints: Record<string, string[]> = {
-    "component": ["UI components", "components"],
-    "page": ["Pages", "Page components"],
-    "hook": ["Custom hooks"],
-    "util": ["Utility functions"],
-    "api": ["API layer"],
-    "route": ["Route definitions"],
-    "service": ["Service layer"],
-    "model": ["Data models"],
-    "schema": ["Validation schemas"],
-    "middleware": ["Middleware"],
-    "style": ["Stylesheets"],
-    "test": ["Tests"],
-    "config": ["Configuration"],
-    "migration": ["Database migrations"],
-    "auth": ["Auth", "Middleware"],
-    "database": ["Database layer"],
-    "store": ["State management"],
-    "type": ["Type definitions"],
-  };
+  const keywords: string[] = [];
 
-  for (const [keyword, purposes] of Object.entries(hints)) {
+  // 1. Domain keywords — use word boundary matching to avoid substring traps
+  //    ("the" matching "theme", "or" matching "order", etc.)
+  for (const dk of DOMAIN_KEYWORDS) {
+    const regex = new RegExp(`\\b${dk}\\b`, "i");
+    if (regex.test(lower) && !keywords.includes(dk)) keywords.push(dk);
+  }
+
+  // 2. Remaining meaningful words from the prompt (nouns/subjects only)
+  const stopWords = new Set([
+    "the", "and", "for", "with", "that", "this", "from", "into",
+    "not", "but", "its", "are", "was", "has", "had", "will",
+    "can", "should", "would", "could", "may", "use", "using",
+    "add", "fix", "create", "make", "build", "implement", "update",
+    "refactor", "move", "rename", "delete", "remove", "change",
+    "explain", "describe", "how", "what", "why", "when", "where",
+    "new", "all", "any", "each", "every", "some", "after",
+    "before", "work", "working", "does", "doesn", "isn",
+    "about", "like", "also", "just", "only", "more", "very",
+    "been", "being", "have", "having", "need", "want",
+    "page", "file", "code", "function", "method", "class",
+    "component", "module", "package", "library", "directory",
+    "mode", "flow", "way", "thing", "stuff", "results",
+    "returning", "redirecting", "processing", "handling",
+    "composition", "pattern", "approach", "logic", "system",
+  ]);
+  for (const w of words) {
+    if (!stopWords.has(w) && !keywords.includes(w)) keywords.push(w);
+  }
+
+  return keywords;
+}
+
+function findRelevantFiles(
+  prompt: string,
+  structure: CodebaseContext["structure"],
+): string[] {
+  if (!structure) return [];
+
+  const keywords = extractPromptKeywords(prompt);
+  if (keywords.length === 0) return [];
+
+  const scored = new Map<string, number>();
+
+  // Score files by keyword matches in their path
+  if (structure.files) {
+    for (const filePath of structure.files) {
+      const lower = filePath.toLowerCase();
+      let score = 0;
+
+      for (const kw of keywords) {
+        // Exact segment match (auth.ts, useAuth.tsx) scores higher
+        const segments = lower.split(/[/.\-_]/);
+        if (segments.some((s) => s === kw)) {
+          score += 3;
+        }
+        // Partial match in path (authMiddleware.ts)
+        else if (lower.includes(kw)) {
+          score += 1;
+        }
+      }
+
+      if (score > 0) scored.set(filePath, score);
+    }
+  }
+
+  // Boost files that are already scored AND live in a keyword-matching directory
+  if (structure.keyDirs) {
+    for (const kw of keywords) {
+      for (const [dir, purpose] of Object.entries(structure.keyDirs)) {
+        const dirLower = dir.toLowerCase();
+        const purposeLower = purpose.toLowerCase();
+        if (dirLower.includes(kw) || purposeLower.includes(kw)) {
+          // Only boost files that already have some relevance score
+          for (const [filePath, score] of scored.entries()) {
+            if (filePath.startsWith(dir + "/")) {
+              scored.set(filePath, score + 2);
+            }
+          }
+        }
+      }
+    }
+  }
+
+  // Return top results, sorted by score descending, capped at 8
+  return [...scored.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 8)
+    .map(([path]) => path);
+}
+
+function findRelevantDir(prompt: string, keyDirs: Record<string, string>): string | null {
+  const lower = prompt.toLowerCase();
+  for (const [keyword, purposes] of Object.entries(DIR_HINTS)) {
     if (lower.includes(keyword)) {
       for (const [dir, purpose] of Object.entries(keyDirs)) {
         if (purposes.some((p) => purpose.includes(p))) {
@@ -216,7 +357,6 @@ function guessRelevantDirs(prompt: string, keyDirs: Record<string, string>): str
       }
     }
   }
-
   return null;
 }
 

@@ -55,6 +55,8 @@ export async function detectStructure(
   const keyDirs: Record<string, string> = {};
   let totalFiles = 0;
   const treeLines: string[] = [];
+  const collectedFiles: string[] = [];
+  const MAX_FILES = 500; // cap to avoid memory bloat on large repos
 
   async function walk(dir: string, depth: number, prefix: string) {
     if (depth > maxDepth) return;
@@ -67,17 +69,26 @@ export async function detectStructure(
     }
 
     // Sort: dirs first, then files
-    const dirs = entries.filter((e) => e.isDirectory() && !SKIP_DIRS.has(e.name) && !e.name.startsWith("."));
-    const files = entries.filter((e) => e.isFile() && !e.name.startsWith("."));
+    const subDirs = entries.filter((e) => e.isDirectory() && !SKIP_DIRS.has(e.name) && !e.name.startsWith("."));
+    const dirFiles = entries.filter((e) => e.isFile() && !e.name.startsWith("."));
 
-    totalFiles += files.length;
+    totalFiles += dirFiles.length;
 
-    if (depth === 0) {
-      for (const d of dirs) rootDirs.push(d.name);
+    // Collect relative file paths for relevance matching
+    if (collectedFiles.length < MAX_FILES) {
+      for (const f of dirFiles) {
+        if (collectedFiles.length >= MAX_FILES) break;
+        const relPath = relative(projectPath, join(dir, f.name)).replace(/\\/g, "/");
+        collectedFiles.push(relPath);
+      }
     }
 
-    const items = [...dirs, ...files.slice(0, 5)]; // show max 5 files per dir
-    const hasMoreFiles = files.length > 5;
+    if (depth === 0) {
+      for (const d of subDirs) rootDirs.push(d.name);
+    }
+
+    const items = [...subDirs, ...dirFiles.slice(0, 5)]; // show max 5 files per dir
+    const hasMoreFiles = dirFiles.length > 5;
 
     for (let i = 0; i < items.length; i++) {
       const entry = items[i];
@@ -101,7 +112,7 @@ export async function detectStructure(
     }
 
     if (hasMoreFiles) {
-      treeLines.push(`${prefix}└── ... ${files.length - 5} more files`);
+      treeLines.push(`${prefix}└── ... ${dirFiles.length - 5} more files`);
     }
   }
 
@@ -112,5 +123,6 @@ export async function detectStructure(
     keyDirs,
     totalFiles,
     tree: treeLines.join("\n"),
+    files: collectedFiles,
   };
 }
