@@ -2,6 +2,7 @@ export type {
   CodebaseContext,
   StackInfo,
   ConventionInfo,
+  ConventionConfidence,
   StructureInfo,
   DependencyInfo,
   DependencyEntry,

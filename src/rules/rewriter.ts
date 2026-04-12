@@ -363,22 +363,35 @@ function findRelevantDir(prompt: string, keyDirs: Record<string, string>): strin
   return null;
 }
 
+const CONFIDENCE_THRESHOLD = 0.5; // only inject conventions above this confidence
+
 function formatConventionsAsInstructions(
   c: CodebaseContext["conventions"],
   scope: ConventionScope = "full",
 ): string {
   if (!c || scope === "none") return "";
 
+  const conf = c.confidence;
   const bits: string[] = [];
 
   // File naming only for "full" scope (creating new files)
-  if (scope === "full" && c.fileNaming !== "mixed") bits.push(`${c.fileNaming} file names`);
+  if (scope === "full" && c.fileNaming !== "mixed" && conf.fileNaming >= CONFIDENCE_THRESHOLD) {
+    bits.push(`${c.fileNaming} file names`);
+  }
 
   // Code style conventions for both "full" and "style_only"
-  if (c.exportStyle !== "mixed") bits.push(`${c.exportStyle} exports`);
-  if (c.componentPattern && c.componentPattern !== "mixed") bits.push(`${c.componentPattern} components`);
-  bits.push(`${c.quotes} quotes`);
-  bits.push(c.semicolons ? "semicolons" : "no semicolons");
+  if (c.exportStyle !== "mixed" && conf.exports >= CONFIDENCE_THRESHOLD) {
+    bits.push(`${c.exportStyle} exports`);
+  }
+  if (c.componentPattern && c.componentPattern !== "mixed" && conf.components >= CONFIDENCE_THRESHOLD) {
+    bits.push(`${c.componentPattern} components`);
+  }
+  if (conf.quotes >= CONFIDENCE_THRESHOLD) {
+    bits.push(`${c.quotes} quotes`);
+  }
+  if (conf.semicolons >= CONFIDENCE_THRESHOLD) {
+    bits.push(c.semicolons ? "semicolons" : "no semicolons");
+  }
 
   return bits.length > 0 ? `Use ${bits.join(", ")}.` : "";
 }

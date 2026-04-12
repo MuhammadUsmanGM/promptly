@@ -1,6 +1,20 @@
 import { readFile, readdir, stat } from "node:fs/promises";
 import { join, extname, basename } from "node:path";
-import type { ConventionInfo } from "../rules/index.js";
+import type { ConventionInfo, ConventionConfidence } from "../rules/index.js";
+
+// Minimum sample sizes for high confidence
+const MIN_SAMPLES_NAMING = 8;    // need enough variable names
+const MIN_SAMPLES_FILES = 5;     // need enough files
+const MIN_SAMPLES_EXPORTS = 5;   // need enough export statements
+const MIN_SAMPLES_COMPONENTS = 3; // fewer components expected
+const MIN_SAMPLES_STYLE = 10;    // semicolons/quotes need many lines
+
+function computeConfidence(dominant: number, total: number, minSamples: number): number {
+  if (total === 0) return 0;
+  const ratio = dominant / total;       // how dominant is the winner
+  const coverage = Math.min(total / minSamples, 1); // do we have enough samples
+  return Math.round(ratio * coverage * 100) / 100;
+}
 
 const CODE_EXTENSIONS = new Set([
   ".ts", ".tsx", ".js", ".jsx", ".vue", ".svelte",
@@ -40,7 +54,7 @@ async function sampleFiles(projectPath: string, max = 15): Promise<string[]> {
   return files;
 }
 
-function detectNamingConvention(names: string[]): ConventionInfo["namingConvention"] {
+function detectNamingConvention(names: string[]): { value: ConventionInfo["namingConvention"]; dominant: number; total: number } {
   let camel = 0, snake = 0, pascal = 0;
   for (const name of names) {
     if (/^[a-z][a-zA-Z0-9]*[A-Z][a-zA-Z0-9]*$/.test(name)) camel++;
@@ -49,14 +63,14 @@ function detectNamingConvention(names: string[]): ConventionInfo["namingConventi
     // Single lowercase words (foo, bar) are ambiguous — skip them
   }
   const total = camel + snake + pascal;
-  if (total === 0) return "mixed";
-  if (camel / total > 0.6) return "camelCase";
-  if (snake / total > 0.6) return "snake_case";
-  if (pascal / total > 0.6) return "PascalCase";
-  return "mixed";
+  if (total === 0) return { value: "mixed", dominant: 0, total: 0 };
+  if (camel / total > 0.6) return { value: "camelCase", dominant: camel, total };
+  if (snake / total > 0.6) return { value: "snake_case", dominant: snake, total };
+  if (pascal / total > 0.6) return { value: "PascalCase", dominant: pascal, total };
+  return { value: "mixed", dominant: Math.max(camel, snake, pascal), total };
 }
 
-function detectFileNaming(fileNames: string[]): ConventionInfo["fileNaming"] {
+function detectFileNaming(fileNames: string[]): { value: ConventionInfo["fileNaming"]; dominant: number; total: number } {
   let kebab = 0, camel = 0, pascal = 0, snake = 0;
   for (const name of fileNames) {
     const base = name.replace(/\.[^.]+$/, ""); // strip extension
@@ -66,12 +80,12 @@ function detectFileNaming(fileNames: string[]): ConventionInfo["fileNaming"] {
     else if (/^[a-z][a-z0-9_]*$/.test(base)) snake++;
   }
   const total = kebab + camel + pascal + snake;
-  if (total === 0) return "mixed";
-  if (kebab / total > 0.5) return "kebab-case";
-  if (camel / total > 0.5) return "camelCase";
-  if (pascal / total > 0.5) return "PascalCase";
-  if (snake / total > 0.5) return "snake_case";
-  return "mixed";
+  if (total === 0) return { value: "mixed", dominant: 0, total: 0 };
+  if (kebab / total > 0.5) return { value: "kebab-case", dominant: kebab, total };
+  if (camel / total > 0.5) return { value: "camelCase", dominant: camel, total };
+  if (pascal / total > 0.5) return { value: "PascalCase", dominant: pascal, total };
+  if (snake / total > 0.5) return { value: "snake_case", dominant: snake, total };
+  return { value: "mixed", dominant: Math.max(kebab, camel, pascal, snake), total };
 }
 
 export async function detectConventions(projectPath: string): Promise<ConventionInfo | null> {
@@ -169,9 +183,30 @@ export async function detectConventions(projectPath: string): Promise<Convention
     if (indentSize > 4) indentSize = 2; // fallback
   }
 
+  const naming = detectNamingConvention(variableNames);
+  const fileNamingResult = detectFileNaming(fileNames);
+
+  const totalExports = namedExports + defaultExports;
+  const dominantExports = Math.max(namedExports, defaultExports);
+  const totalComponents = funcCount + classCount;
+  const dominantComponents = Math.max(funcCount, classCount);
+  const totalSemicolons = semiCount + noSemiCount;
+  const dominantSemicolons = Math.max(semiCount, noSemiCount);
+  const totalQuotes = singleQuotes + doubleQuotes;
+  const dominantQuotes = Math.max(singleQuotes, doubleQuotes);
+
+  const confidence: ConventionConfidence = {
+    naming: computeConfidence(naming.dominant, naming.total, MIN_SAMPLES_NAMING),
+    fileNaming: computeConfidence(fileNamingResult.dominant, fileNamingResult.total, MIN_SAMPLES_FILES),
+    exports: computeConfidence(dominantExports, totalExports, MIN_SAMPLES_EXPORTS),
+    components: computeConfidence(dominantComponents, totalComponents, MIN_SAMPLES_COMPONENTS),
+    semicolons: computeConfidence(dominantSemicolons, totalSemicolons, MIN_SAMPLES_STYLE),
+    quotes: computeConfidence(dominantQuotes, totalQuotes, MIN_SAMPLES_STYLE),
+  };
+
   return {
-    namingConvention: detectNamingConvention(variableNames),
-    fileNaming: detectFileNaming(fileNames),
+    namingConvention: naming.value,
+    fileNaming: fileNamingResult.value,
     componentPattern,
     exportStyle,
     testLocation: hasTests ? testLocation : "colocated",
@@ -179,5 +214,6 @@ export async function detectConventions(projectPath: string): Promise<Convention
     indentSize,
     semicolons: semiCount > noSemiCount,
     quotes: singleQuotes > doubleQuotes ? "single" : "double",
+    confidence,
   };
 }

@@ -15,6 +15,15 @@ export interface StackInfo {
   testRunner?: string;
 }
 
+export interface ConventionConfidence {
+  naming: number;      // 0-1: how confident in namingConvention
+  fileNaming: number;  // 0-1: how confident in fileNaming
+  exports: number;     // 0-1: how confident in exportStyle
+  components: number;  // 0-1: how confident in componentPattern
+  semicolons: number;  // 0-1: how confident in semicolons
+  quotes: number;      // 0-1: how confident in quotes
+}
+
 export interface ConventionInfo {
   namingConvention: "camelCase" | "snake_case" | "PascalCase" | "kebab-case" | "mixed";
   fileNaming: "camelCase" | "PascalCase" | "kebab-case" | "snake_case" | "mixed";
@@ -25,6 +34,7 @@ export interface ConventionInfo {
   indentSize?: number;
   semicolons: boolean;
   quotes: "single" | "double";
+  confidence: ConventionConfidence;
 }
 
 export interface StructureInfo {
