@@ -101,9 +101,9 @@ function rewriteRefactor(raw: string, ctx: CodebaseContext, agent: Agent): strin
   let action = ensureImperative(raw, agent);
   parts.push(action);
 
-  // Only conventions matter for refactoring
+  // Code style matters for refactoring, but not file naming
   if (ctx.conventions) {
-    parts.push(formatConventionsAsInstructions(ctx.conventions));
+    parts.push(formatConventionsAsInstructions(ctx.conventions, "style_only"));
   }
 
   parts.push("Do not change external behavior or public APIs. All existing tests must still pass.");
@@ -156,6 +156,10 @@ function rewriteGeneric(raw: string, ctx: CodebaseContext, agent: Agent): string
 
   return action;
 }
+
+// --- Convention scoping ---
+
+type ConventionScope = "full" | "style_only" | "none";
 
 // --- Helpers ---
 
@@ -216,16 +220,22 @@ function guessRelevantDirs(prompt: string, keyDirs: Record<string, string>): str
   return null;
 }
 
-function formatConventionsAsInstructions(c: CodebaseContext["conventions"]): string {
-  if (!c) return "";
+function formatConventionsAsInstructions(
+  c: CodebaseContext["conventions"],
+  scope: ConventionScope = "full",
+): string {
+  if (!c || scope === "none") return "";
 
   const bits: string[] = [];
 
-  if (c.fileNaming !== "mixed") bits.push(`${c.fileNaming} file names`);
+  // File naming only for "full" scope (creating new files)
+  if (scope === "full" && c.fileNaming !== "mixed") bits.push(`${c.fileNaming} file names`);
+
+  // Code style conventions for both "full" and "style_only"
   if (c.exportStyle !== "mixed") bits.push(`${c.exportStyle} exports`);
   if (c.componentPattern && c.componentPattern !== "mixed") bits.push(`${c.componentPattern} components`);
   bits.push(`${c.quotes} quotes`);
   bits.push(c.semicolons ? "semicolons" : "no semicolons");
 
-  return `Use ${bits.join(", ")}.`;
+  return bits.length > 0 ? `Use ${bits.join(", ")}.` : "";
 }
