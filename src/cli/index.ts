@@ -60,7 +60,7 @@ export async function runCli(args: string[]) {
 function printHelp() {
   console.log(`  \x1b[1mUsage:\x1b[0m
 
-    promptly init          Set up Promptly (Claude Code, Cursor, or Gemini CLI)
+    promptly init          Set up Promptly (Claude Code, Cursor, Gemini CLI, or Qwen Code)
     promptly mcp           Start MCP server (called automatically by your agent)
     promptly mcp --debug   Start MCP server with diagnostic logging
     promptly status        Check which agents are configured

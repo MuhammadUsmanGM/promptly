@@ -73,7 +73,7 @@ Returns a rewritten prompt. Execute it instead of the original.`,
     {
       raw_prompt: z.string().describe("The user's original prompt"),
       project_path: z.string().describe("Absolute path to the project root"),
-      agent: z.enum(["claude_code", "cursor", "gemini_cli", "generic"]).optional().default("claude_code"),
+      agent: z.enum(["claude_code", "cursor", "gemini_cli", "qwen_code", "generic"]).optional().default("claude_code"),
     },
     async ({ raw_prompt, project_path, agent }) => {
       log(`refine_prompt called — path=${project_path}, agent=${agent}`);
@@ -112,7 +112,7 @@ Returns a rewritten prompt. Execute it instead of the original.`,
     "get_refinement_rules",
     `Returns Promptly's rules. Only call if the user asks how Promptly works.`,
     {
-      agent: z.enum(["claude_code", "cursor", "gemini_cli", "generic"]).optional().default("generic"),
+      agent: z.enum(["claude_code", "cursor", "gemini_cli", "qwen_code", "generic"]).optional().default("generic"),
     },
     async ({ agent }) => {
       return {

@@ -16,7 +16,7 @@ import { rewritePrompt } from "./rewriter.js";
 import type { CodebaseContext } from "./universal.js";
 import type { Intent } from "./intent.js";
 
-export type Agent = "claude_code" | "cursor" | "gemini_cli" | "generic";
+export type Agent = "claude_code" | "cursor" | "gemini_cli" | "qwen_code" | "generic";
 
 export function refinePrompt(
   rawPrompt: string,

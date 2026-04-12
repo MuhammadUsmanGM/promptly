@@ -5,7 +5,7 @@ import select from "@inquirer/select";
 
 // --- Agent definitions ---
 
-type AgentId = "claude_code" | "cursor" | "gemini_cli";
+type AgentId = "claude_code" | "cursor" | "gemini_cli" | "qwen_code";
 
 interface AgentConfig {
   label: string;
@@ -34,6 +34,12 @@ const AGENTS: Record<AgentId, AgentConfig> = {
     mcpConfig: { global: join(home, ".gemini", "settings.json"), project: join(".gemini", "settings.json") },
     instructions: { global: join(home, ".gemini", "GEMINI.md"), project: "GEMINI.md" },
     restartMsg: "Restart Gemini CLI and Promptly will be active.",
+  },
+  qwen_code: {
+    label: "Qwen Code",
+    mcpConfig: { global: join(home, ".qwen", "settings.json"), project: join(".qwen", "settings.json") },
+    instructions: { global: join(home, ".qwen", "QWEN.md"), project: "QWEN.md" },
+    restartMsg: "Restart Qwen Code and Promptly will be active.",
   },
 };
 
@@ -114,6 +120,7 @@ export async function init() {
       { name: "Claude Code", value: "claude_code", description: "Anthropic's CLI agent" },
       { name: "Cursor", value: "cursor", description: "AI-powered code editor" },
       { name: "Gemini CLI", value: "gemini_cli", description: "Google's CLI agent" },
+      { name: "Qwen Code", value: "qwen_code", description: "Alibaba's CLI agent" },
     ],
   });
 

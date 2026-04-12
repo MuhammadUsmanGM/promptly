@@ -204,7 +204,7 @@ type ConventionScope = "full" | "style_only" | "none";
 // --- Helpers ---
 
 function ensureImperative(prompt: string, agent: Agent): string {
-  if (agent !== "claude_code" && agent !== "gemini_cli") return prompt;
+  if (agent !== "claude_code" && agent !== "gemini_cli" && agent !== "qwen_code") return prompt;
 
   const imperative = [
     "create", "add", "fix", "refactor", "update", "remove",

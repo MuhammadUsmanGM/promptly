@@ -6,6 +6,8 @@
 [![MCP](https://img.shields.io/badge/MCP-Compatible-8B5CF6)](https://modelcontextprotocol.io)
 [![Claude Code](https://img.shields.io/badge/Claude_Code-Ready-F97316?logo=anthropic&logoColor=white)](https://claude.ai)
 [![Cursor](https://img.shields.io/badge/Cursor-Ready-00D1FF?logo=cursor&logoColor=white)](https://cursor.com)
+[![Gemini CLI](https://img.shields.io/badge/Gemini_CLI-Ready-4285F4?logo=google&logoColor=white)](https://geminicli.com)
+[![Qwen Code](https://img.shields.io/badge/Qwen_Code-Ready-6F42C1)](https://github.com/QwenLM/qwen-code)
 [![npm](https://img.shields.io/badge/npm-@promptly--ai/cli-CB3837?logo=npm&logoColor=white)](https://www.npmjs.com/package/@promptly-ai/cli)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](http://makeapullrequest.com)
 
@@ -60,17 +62,17 @@ Or without global install:
 npx @promptly-ai/cli init
 ```
 
-That's it. Select your agent (Claude Code, Cursor, or Gemini CLI), choose the scope, and restart your agent.
+That's it. Select your agent (Claude Code, Cursor, Gemini CLI, or Qwen Code), choose the scope, and restart your agent.
 
 ---
 
 ## CLI Commands
 
 ```bash
-promptly init          # Set up Promptly (Claude Code, Cursor, or Gemini CLI)
+promptly init          # Set up Promptly (Claude Code, Cursor, Gemini CLI, or Qwen Code)
 promptly mcp           # Start MCP server (called automatically by your agent)
 promptly status        # Check which agents are configured
-promptly rules [agent] # Print refinement rules (claude_code|cursor|gemini_cli|generic)
+promptly rules [agent] # Print refinement rules (claude_code|cursor|gemini_cli|qwen_code|generic)
 promptly --version     # Print version
 ```
 
@@ -108,6 +110,7 @@ Returns the current ruleset. Only called if the user asks how Promptly works.
 | **Claude Code** | ✔ | Full agent-specific rules | Full |
 | **Cursor** | ✔ | Agent-specific rules | Full |
 | **Gemini CLI** | ✔ | Agent-specific rules | Full |
+| **Qwen Code** | ✔ | Agent-specific rules | Full |
 
 ### Setup Details
 
@@ -116,6 +119,7 @@ Returns the current ruleset. Only called if the user asks how Promptly works.
 | Claude Code | `~/.claude/settings.json` | `CLAUDE.md` (global or project) |
 | Cursor | `.cursor/mcp.json` (global or project) | `.cursorrules` (project) |
 | Gemini CLI | `~/.gemini/settings.json` (global or project) | `GEMINI.md` (global or project) |
+| Qwen Code | `~/.qwen/settings.json` (global or project) | `QWEN.md` (global or project) |
 
 ---
 

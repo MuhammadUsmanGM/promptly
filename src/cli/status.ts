@@ -35,6 +35,17 @@ const AGENT_CHECKS = [
       { path: join(process.cwd(), "GEMINI.md"), label: "project GEMINI.md" },
     ],
   },
+  {
+    label: "Qwen Code",
+    mcpPaths: [
+      join(home, ".qwen", "settings.json"),
+      join(process.cwd(), ".qwen", "settings.json"),
+    ],
+    instructionPaths: [
+      { path: join(home, ".qwen", "QWEN.md"), label: "global QWEN.md" },
+      { path: join(process.cwd(), "QWEN.md"), label: "project QWEN.md" },
+    ],
+  },
 ];
 
 async function checkMcpConfig(path: string): Promise<{ found: boolean; command?: string; args?: string }> {
