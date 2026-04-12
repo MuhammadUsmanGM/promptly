@@ -1,0 +1,17 @@
+# Source
+src/
+
+# Config
+tsconfig.json
+tsup.config.ts
+.gitignore
+.git/
+
+# Dev files
+node_modules/
+package-lock.json
+CONTRIBUTING.md
+CHANGELOG.md
+.claude/
+.env
+*.tgz
