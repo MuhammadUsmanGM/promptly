@@ -1,6 +1,6 @@
 {
   "name": "@promptly-ai/cli",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "MCP server that analyzes your codebase and refines coding prompts before your AI agent acts on them",
   "license": "MIT",
   "type": "module",
