@@ -13,52 +13,19 @@ function getCachedAnalysis(projectPath: string): CodebaseContext | null {
   return null;
 }
 
-function formatCompact(context: CodebaseContext): string {
-  const parts: string[] = [];
-
-  if (context.stack) {
-    const s = context.stack;
-    const stack = [s.framework, s.language, s.styling, s.orm, s.testRunner]
-      .filter(Boolean).join(", ");
-    parts.push(`Stack: ${stack} | pkg: ${s.packageManager}${s.runtime ? ` | ${s.runtime}` : ""}`);
-  }
-
-  if (context.conventions) {
-    const c = context.conventions;
-    parts.push(`Style: ${c.namingConvention} vars, ${c.fileNaming} files, ${c.quotes} quotes, ${c.semicolons ? "semi" : "no-semi"}, ${c.exportStyle} exports${c.componentPattern ? `, ${c.componentPattern} components` : ""}, tests: ${c.testLocation}`);
-  }
-
-  if (context.structure?.keyDirs) {
-    const dirs = Object.entries(context.structure.keyDirs)
-      .map(([d, p]) => `${d}(${p})`)
-      .join(", ");
-    if (dirs) parts.push(`Dirs: ${dirs}`);
-  }
-
-  if (context.dependencies?.categories) {
-    const cats = Object.entries(context.dependencies.categories)
-      .map(([cat, pkgs]) => `${cat}: ${pkgs.join(", ")}`)
-      .join(" | ");
-    if (cats) parts.push(`Deps: ${cats}`);
-  }
-
-  return parts.join("\n");
-}
-
 export function registerTools(server: McpServer, debug = false) {
   const log = debug
     ? (...args: unknown[]) => console.error("[promptly]", ...args)
     : () => {};
 
-  // Single tool: analyze + refine in one call
   server.tool(
     "refine_prompt",
-    `Analyzes the codebase and refines a coding prompt in one step. Call this for any coding task — it scans the project's stack, conventions, structure, and dependencies, then rewrites the prompt with that context baked in.
+    `Analyzes the codebase and rewrites a coding prompt with project context baked in. Detects intent (create/fix/refactor/explain/configure) and tailors the rewrite accordingly.
 
 WHEN TO CALL: Any prompt to write, fix, refactor, explain, or configure code.
 SKIP FOR: General chat, math, non-coding questions.
 
-Returns a refined prompt. Execute it instead of the original.`,
+Returns a rewritten prompt. Execute it instead of the original.`,
     {
       raw_prompt: z.string().describe("The user's original prompt"),
       project_path: z.string().describe("Absolute path to the project root"),
@@ -67,7 +34,6 @@ Returns a refined prompt. Execute it instead of the original.`,
     async ({ raw_prompt, project_path, agent }) => {
       log(`refine_prompt called — path=${project_path}, agent=${agent}`);
       try {
-        // Use cached analysis if fresh, otherwise scan
         let context = getCachedAnalysis(project_path);
         if (!context) {
           log("cache miss — analyzing codebase");
@@ -77,20 +43,17 @@ Returns a refined prompt. Execute it instead of the original.`,
           log("cache hit");
         }
 
-        const { refined, rulesApplied, intent } = refinePrompt(raw_prompt, context, agent as Agent);
-        const compactContext = formatCompact(context);
-        log(`done — intent=${intent}, rules: ${rulesApplied.join(", ") || "none"}`);
+        const { refined, intent } = refinePrompt(raw_prompt, context, agent as Agent);
+        log(`done — intent=${intent}`);
 
-        // Compact output: refined prompt + one-line context summary
         return {
           content: [{
             type: "text" as const,
-            text: `${refined}\n\n---\n[Promptly] intent: ${intent} | ${rulesApplied.length} rules applied\n${compactContext}`,
+            text: `${refined}\n\n---\n[Promptly] intent: ${intent}`,
           }],
         };
       } catch (error) {
         log("error —", error);
-        // On failure, return original prompt so Claude can still proceed
         return {
           content: [{
             type: "text" as const,
@@ -101,7 +64,6 @@ Returns a refined prompt. Execute it instead of the original.`,
     },
   );
 
-  // Lightweight reference tool — only called if user asks about Promptly
   server.tool(
     "get_refinement_rules",
     `Returns Promptly's rules. Only call if the user asks how Promptly works.`,
