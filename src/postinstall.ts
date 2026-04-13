@@ -19,4 +19,4 @@ ${dim}  $${reset} ${bold}promptly --help${reset}     ${dim}View all commands${re
 ${dim}  ──────────────────────────────────────────${reset}
 `;
 
-console.log(message);
+console.error(message);
