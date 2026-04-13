@@ -216,11 +216,12 @@ function ensureImperative(prompt: string, agent: Agent): string {
   if (imperative.includes(firstWord)) return prompt;
 
   // Try to extract the actual action from conversational phrasing
-  // "I need a login form" → "Create a login form"
-  // "can you add dark mode" → "add dark mode"
-  // "we should refactor auth" → "refactor auth"
+  // "can you add dark mode" → "Add dark mode"
+  // "we should refactor auth" → "Refactor auth"
+  // Only rewrite if the action verb is near the start (within first 50 chars)
+  // to avoid dropping important context from longer prompts
   const actionMatch = prompt.match(
-    /\b(create|add|fix|refactor|update|remove|delete|implement|build|write|move|rename|extract|replace|configure|set up|install)\b\s+(.+)/i,
+    /^.{0,50}?\b(create|add|fix|refactor|update|remove|delete|implement|build|write|move|rename|extract|replace|configure|set up|install)\b\s+(.+)/is,
   );
   if (actionMatch) {
     return `${actionMatch[1].charAt(0).toUpperCase() + actionMatch[1].slice(1)} ${actionMatch[2]}`;

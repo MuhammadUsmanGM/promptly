@@ -2,10 +2,18 @@ export type Intent = "create" | "fix" | "refactor" | "explain" | "configure" | "
 
 const INTENT_PATTERNS: { intent: Intent; patterns: RegExp[] }[] = [
   {
-    intent: "create",
+    // Configure BEFORE create — "set up ESLint", "add eslint" should be configure, not create
+    intent: "configure",
     patterns: [
-      /\b(create|add|build|implement|make|write|generate|scaffold|set\s*up|init|new)\b/i,
-      /\b(add\s+a|create\s+a|build\s+a|make\s+a|write\s+a|new\s+\w+)\b/i,
+      /\b(configure|config|install|set\s*up|deploy|migrate|upgrade|update\s+(?:deps|dependencies|packages))\b/i,
+      /\b(add\s+(?:eslint|prettier|tailwind|docker|ci|cd|github\s+actions))\b/i,
+    ],
+  },
+  {
+    intent: "explain",
+    patterns: [
+      /\b(explain|describe|what\s+(?:does|is)|how\s+does|walk\s+(?:me\s+)?through|understand|tell\s+me\s+about|show\s+me\s+how|why\s+(?:does|is))\b/i,
+      /\bwhat('?s|\s+is)\s+(this|that|the)\b/i,
     ],
   },
   {
@@ -23,17 +31,10 @@ const INTENT_PATTERNS: { intent: Intent; patterns: RegExp[] }[] = [
     ],
   },
   {
-    intent: "explain",
+    intent: "create",
     patterns: [
-      /\b(explain|describe|what\s+(?:does|is)|how\s+does|walk\s+(?:me\s+)?through|understand|tell\s+me\s+about|show\s+me\s+how|why\s+(?:does|is))\b/i,
-      /\bwhat('?s|\s+is)\s+(this|that|the)\b/i,
-    ],
-  },
-  {
-    intent: "configure",
-    patterns: [
-      /\b(configure|config|install|set\s*up|deploy|migrate|upgrade|update\s+(?:deps|dependencies|packages))\b/i,
-      /\b(add\s+(?:eslint|prettier|tailwind|docker|ci|cd|github\s+actions))\b/i,
+      /\b(create|add|build|implement|make|write|generate|scaffold|init|new)\b/i,
+      /\b(add\s+a|create\s+a|build\s+a|make\s+a|write\s+a|new\s+\w+)\b/i,
     ],
   },
 ];

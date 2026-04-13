@@ -19,7 +19,7 @@ const home = homedir();
 const AGENTS: Record<AgentId, AgentConfig> = {
   claude_code: {
     label: "Claude Code",
-    mcpConfig: { global: join(home, ".claude", "settings.json") },
+    mcpConfig: { global: join(home, ".claude", "settings.json"), project: join(".claude", "settings.json") },
     instructions: { global: join(home, ".claude", "CLAUDE.md"), project: "CLAUDE.md" },
     restartMsg: "Restart Claude Code and Promptly will be active.",
   },
@@ -142,11 +142,21 @@ export async function init() {
     let scope: "global" | "project";
     const ac = new AbortController();
     let escPressed = false;
+    let escTimer: ReturnType<typeof setTimeout> | null = null;
 
     const escHandler = (data: Buffer) => {
+      // Esc key = lone 0x1b byte. Arrow keys also start with 0x1b but are
+      // followed immediately by more bytes (e.g. \x1b[A). If we get a single
+      // 0x1b, wait a tiny bit — if no follow-up arrives, it's a real Esc press.
       if (data.length === 1 && data[0] === 0x1b) {
-        escPressed = true;
-        ac.abort();
+        escTimer = setTimeout(() => {
+          escPressed = true;
+          ac.abort();
+        }, 50);
+      } else if (escTimer && data.length > 0 && data[0] === 0x5b) {
+        // Follow-up byte from arrow key sequence — cancel the Esc
+        clearTimeout(escTimer);
+        escTimer = null;
       }
     };
     process.stdin.on("data", escHandler);
@@ -172,12 +182,14 @@ export async function init() {
         ],
       }, { signal: ac.signal });
     } catch {
+      if (escTimer) clearTimeout(escTimer);
       process.stdin.off("data", escHandler);
       if (escPressed) continue; // Esc — go back to step 1
       // Ctrl+C — exit gracefully
       console.log("\n  \x1b[90m✦ Setup cancelled.\x1b[0m\n");
       return;
     }
+    if (escTimer) clearTimeout(escTimer);
     process.stdin.off("data", escHandler);
 
     console.log("");

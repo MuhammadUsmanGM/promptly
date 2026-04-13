@@ -74,10 +74,10 @@ function detectFileNaming(fileNames: string[]): { value: ConventionInfo["fileNam
   let kebab = 0, camel = 0, pascal = 0, snake = 0;
   for (const name of fileNames) {
     const base = name.replace(/\.[^.]+$/, ""); // strip extension
-    if (/^[a-z][a-z0-9-]*$/.test(base)) kebab++;
-    else if (/^[a-z][a-zA-Z0-9]*$/.test(base)) camel++;
+    if (/^[a-z][a-z0-9]*-[a-z0-9-]*$/.test(base)) kebab++;
+    else if (/^[a-z][a-zA-Z0-9]*[A-Z][a-zA-Z0-9]*$/.test(base)) camel++;
     else if (/^[A-Z][a-zA-Z0-9]*$/.test(base)) pascal++;
-    else if (/^[a-z][a-z0-9_]*$/.test(base)) snake++;
+    else if (/^[a-z][a-z0-9]*_[a-z0-9_]*$/.test(base)) snake++;
   }
   const total = kebab + camel + pascal + snake;
   if (total === 0) return { value: "mixed", dominant: 0, total: 0 };
