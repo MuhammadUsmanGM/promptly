@@ -135,14 +135,25 @@ export async function init() {
 
     const agent = AGENTS[agentId];
 
-    // Step 2: Select scope (with ← Back option)
+    // Step 2: Select scope (Esc goes back to step 1)
     const hasGlobalInstructions = !!agent.instructions.global;
     const hasProjectMcp = !!agent.mcpConfig.project;
 
-    let scope: "global" | "project" | "back";
+    let scope: "global" | "project";
+    const ac = new AbortController();
+    let escPressed = false;
+
+    const escHandler = (data: Buffer) => {
+      if (data.length === 1 && data[0] === 0x1b) {
+        escPressed = true;
+        ac.abort();
+      }
+    };
+    process.stdin.on("data", escHandler);
+
     try {
-      scope = await select<"global" | "project" | "back">({
-        message: "Where should Promptly be active?",
+      scope = await select<"global" | "project">({
+        message: "Where should Promptly be active? \x1b[90m(esc to go back)\x1b[0m",
         choices: [
           {
             name: "Global (all projects)",
@@ -158,20 +169,16 @@ export async function init() {
               ? "MCP + instructions scoped to this directory"
               : "MCP is global, instructions scoped to this directory",
           },
-          {
-            name: "\x1b[90m← Back\x1b[0m",
-            value: "back" as const,
-            description: "Go back to agent selection",
-          },
         ],
-      });
+      }, { signal: ac.signal });
     } catch {
+      process.stdin.off("data", escHandler);
+      if (escPressed) continue; // Esc — go back to step 1
       // Ctrl+C — exit gracefully
       console.log("\n  \x1b[90m✦ Setup cancelled.\x1b[0m\n");
       return;
     }
-
-    if (scope === "back") continue;
+    process.stdin.off("data", escHandler);
 
     console.log("");
 
