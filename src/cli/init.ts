@@ -112,73 +112,66 @@ async function writeInstructionFile(filePath: string): Promise<void> {
 
 // --- Main init ---
 
-const CANCELLED = Symbol("cancelled");
-
-async function prompt<T>(fn: () => Promise<T>): Promise<T | typeof CANCELLED> {
-  try {
-    return await fn();
-  } catch {
-    return CANCELLED;
-  }
-}
-
 export async function init() {
-  // Loop so Escape at step 2 goes back to step 1
+  // Loop so "← Back" at step 2 returns to step 1
   while (true) {
-    // Step 1: Select agent (Escape here exits entirely)
-    const agentId = await prompt(() => select<AgentId>({
-      message: "Which AI coding agent are you using?",
-      choices: [
-        { name: "Claude Code", value: "claude_code", description: "Anthropic's CLI agent" },
-        { name: "Cursor", value: "cursor", description: "AI-powered code editor" },
-        { name: "Gemini CLI", value: "gemini_cli", description: "Google's CLI agent" },
-        { name: "Qwen Code", value: "qwen_code", description: "Alibaba's CLI agent" },
-      ],
-    }));
-
-    if (agentId === CANCELLED) {
+    // Step 1: Select agent
+    let agentId: AgentId;
+    try {
+      agentId = await select<AgentId>({
+        message: "Which AI coding agent are you using?",
+        choices: [
+          { name: "Claude Code", value: "claude_code", description: "Anthropic's CLI agent" },
+          { name: "Cursor", value: "cursor", description: "AI-powered code editor" },
+          { name: "Gemini CLI", value: "gemini_cli", description: "Google's CLI agent" },
+          { name: "Qwen Code", value: "qwen_code", description: "Alibaba's CLI agent" },
+        ],
+      });
+    } catch {
+      // Ctrl+C — exit gracefully
       console.log("\n  \x1b[90m✦ Setup cancelled.\x1b[0m\n");
       return;
     }
 
     const agent = AGENTS[agentId];
 
-    // Step 2: Select scope (Escape goes back to agent selection)
+    // Step 2: Select scope (with ← Back option)
     const hasGlobalInstructions = !!agent.instructions.global;
     const hasProjectMcp = !!agent.mcpConfig.project;
 
-    const scope = await prompt(() => select<"global" | "project">({
-      message: "Where should Promptly be active? (Esc to go back)",
-      choices: [
-        {
-          name: "Global (all projects)",
-          value: "global" as const,
-          description: hasGlobalInstructions
-            ? `MCP + instructions applied everywhere`
-            : `MCP config applied globally, instructions per-project`,
-        },
-        ...(hasProjectMcp
-          ? [{
-              name: "This project only",
-              value: "project" as const,
-              description: "MCP + instructions scoped to this directory",
-            }]
-          : []),
-        // Claude Code MCP is always global, but instructions can be project-scoped
-        ...(!hasProjectMcp
-          ? [{
-              name: "This project only",
-              value: "project" as const,
-              description: "MCP is global, instructions scoped to this directory",
-            }]
-          : []),
-      ],
-    }));
-
-    if (scope === CANCELLED) {
-      // Go back to agent selection
-      continue;
+    let scope: "global" | "project" | "back";
+    try {
+      scope = await select<"global" | "project" | "back">({
+        message: "Where should Promptly be active?",
+        choices: [
+          {
+            name: "Global (all projects)",
+            value: "global" as const,
+            description: hasGlobalInstructions
+              ? `MCP + instructions applied everywhere`
+              : `MCP config applied globally, instructions per-project`,
+          },
+          {
+            name: "This project only",
+            value: "project" as const,
+            description: hasProjectMcp
+              ? "MCP + instructions scoped to this directory"
+              : "MCP is global, instructions scoped to this directory",
+          },
+          {
+            name: "\x1b[90m← Back\x1b[0m",
+            value: "back" as const,
+            description: "Go back to agent selection",
+          },
+        ],
+      });
+    } catch {
+      // Ctrl+C — exit gracefully
+      console.log("\n  \x1b[90m✦ Setup cancelled.\x1b[0m\n");
+      return;
     }
+
+    if (scope === "back") continue;
 
     console.log("");
 
