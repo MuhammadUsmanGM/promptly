@@ -51,18 +51,36 @@ No external API call. No latency from a second model. Your agent just becomes mo
 
 ## Quick Start
 
+### Step 1: Install
+
 ```bash
 npm install -g @promptly-ai/cli
+```
+
+### Step 2: Run the setup wizard
+
+```bash
 promptly init
 ```
 
-Or without global install:
+This will:
+1. Ask which AI agent you're using (Claude Code, Cursor, Gemini CLI, or Qwen Code)
+2. Ask whether to enable Promptly globally (all projects) or just the current project
+3. Automatically configure the MCP server and instruction file for your agent
+
+### Step 3: Restart your agent
+
+That's it. Your agent will now call Promptly before acting on any coding prompt.
+
+> **Don't want to install globally?** Use `npx @promptly-ai/cli init` instead — works the same way.
+
+### Verify it's working
 
 ```bash
-npx @promptly-ai/cli init
+promptly status
 ```
 
-That's it. Select your agent (Claude Code, Cursor, Gemini CLI, or Qwen Code), choose the scope, and restart your agent.
+This shows which agents are configured and where the MCP config + instruction files are located.
 
 ---
 
