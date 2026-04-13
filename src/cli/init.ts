@@ -112,78 +112,99 @@ async function writeInstructionFile(filePath: string): Promise<void> {
 
 // --- Main init ---
 
+const CANCELLED = Symbol("cancelled");
+
+async function prompt<T>(fn: () => Promise<T>): Promise<T | typeof CANCELLED> {
+  try {
+    return await fn();
+  } catch {
+    return CANCELLED;
+  }
+}
+
 export async function init() {
-  // Step 1: Select agent
-  const agentId = await select<AgentId>({
-    message: "Which AI coding agent are you using?",
-    choices: [
-      { name: "Claude Code", value: "claude_code", description: "Anthropic's CLI agent" },
-      { name: "Cursor", value: "cursor", description: "AI-powered code editor" },
-      { name: "Gemini CLI", value: "gemini_cli", description: "Google's CLI agent" },
-      { name: "Qwen Code", value: "qwen_code", description: "Alibaba's CLI agent" },
-    ],
-  });
+  // Loop so Escape at step 2 goes back to step 1
+  while (true) {
+    // Step 1: Select agent (Escape here exits entirely)
+    const agentId = await prompt(() => select<AgentId>({
+      message: "Which AI coding agent are you using?",
+      choices: [
+        { name: "Claude Code", value: "claude_code", description: "Anthropic's CLI agent" },
+        { name: "Cursor", value: "cursor", description: "AI-powered code editor" },
+        { name: "Gemini CLI", value: "gemini_cli", description: "Google's CLI agent" },
+        { name: "Qwen Code", value: "qwen_code", description: "Alibaba's CLI agent" },
+      ],
+    }));
 
-  const agent = AGENTS[agentId];
-
-  // Step 2: Select scope
-  const hasGlobalInstructions = !!agent.instructions.global;
-  const hasProjectMcp = !!agent.mcpConfig.project;
-
-  const scope = await select<"global" | "project">({
-    message: "Where should Promptly be active?",
-    choices: [
-      {
-        name: "Global (all projects)",
-        value: "global" as const,
-        description: hasGlobalInstructions
-          ? `MCP + instructions applied everywhere`
-          : `MCP config applied globally, instructions per-project`,
-      },
-      ...(hasProjectMcp
-        ? [{
-            name: "This project only",
-            value: "project" as const,
-            description: "MCP + instructions scoped to this directory",
-          }]
-        : []),
-      // Claude Code MCP is always global, but instructions can be project-scoped
-      ...(!hasProjectMcp
-        ? [{
-            name: "This project only",
-            value: "project" as const,
-            description: "MCP is global, instructions scoped to this directory",
-          }]
-        : []),
-    ],
-  });
-
-  console.log("");
-
-  // Step 3: Write MCP config
-  if (scope === "project" && agent.mcpConfig.project) {
-    // Project-scoped MCP config
-    const projectMcpPath = join(process.cwd(), agent.mcpConfig.project);
-    await writeMcpConfig(projectMcpPath);
-  } else {
-    // Global MCP config (Claude Code is always global)
-    await writeMcpConfig(agent.mcpConfig.global);
-  }
-
-  // Step 4: Write instruction file
-  if (scope === "global" && agent.instructions.global) {
-    await writeInstructionFile(agent.instructions.global);
-  } else {
-    const projectInstructionPath = join(process.cwd(), agent.instructions.project);
-    await writeInstructionFile(projectInstructionPath);
-
-    // Cursor special case: global MCP but instructions are always per-project
-    if (scope === "global" && !agent.instructions.global) {
-      console.log(`  \x1b[33mℹ\x1b[0m ${agent.label} instructions are per-project. Add ${agent.instructions.project} to each project.`);
+    if (agentId === CANCELLED) {
+      console.log("\n  \x1b[90m✦ Setup cancelled.\x1b[0m\n");
+      return;
     }
-  }
 
-  console.log("");
-  console.log(`  ✦ Done! ${agent.restartMsg}`);
-  console.log("");
+    const agent = AGENTS[agentId];
+
+    // Step 2: Select scope (Escape goes back to agent selection)
+    const hasGlobalInstructions = !!agent.instructions.global;
+    const hasProjectMcp = !!agent.mcpConfig.project;
+
+    const scope = await prompt(() => select<"global" | "project">({
+      message: "Where should Promptly be active? (Esc to go back)",
+      choices: [
+        {
+          name: "Global (all projects)",
+          value: "global" as const,
+          description: hasGlobalInstructions
+            ? `MCP + instructions applied everywhere`
+            : `MCP config applied globally, instructions per-project`,
+        },
+        ...(hasProjectMcp
+          ? [{
+              name: "This project only",
+              value: "project" as const,
+              description: "MCP + instructions scoped to this directory",
+            }]
+          : []),
+        // Claude Code MCP is always global, but instructions can be project-scoped
+        ...(!hasProjectMcp
+          ? [{
+              name: "This project only",
+              value: "project" as const,
+              description: "MCP is global, instructions scoped to this directory",
+            }]
+          : []),
+      ],
+    }));
+
+    if (scope === CANCELLED) {
+      // Go back to agent selection
+      continue;
+    }
+
+    console.log("");
+
+    // Step 3: Write MCP config
+    if (scope === "project" && agent.mcpConfig.project) {
+      const projectMcpPath = join(process.cwd(), agent.mcpConfig.project);
+      await writeMcpConfig(projectMcpPath);
+    } else {
+      await writeMcpConfig(agent.mcpConfig.global);
+    }
+
+    // Step 4: Write instruction file
+    if (scope === "global" && agent.instructions.global) {
+      await writeInstructionFile(agent.instructions.global);
+    } else {
+      const projectInstructionPath = join(process.cwd(), agent.instructions.project);
+      await writeInstructionFile(projectInstructionPath);
+
+      if (scope === "global" && !agent.instructions.global) {
+        console.log(`  \x1b[33mℹ\x1b[0m ${agent.label} instructions are per-project. Add ${agent.instructions.project} to each project.`);
+      }
+    }
+
+    console.log("");
+    console.log(`  ✦ Done! ${agent.restartMsg}`);
+    console.log("");
+    break;
+  }
 }
