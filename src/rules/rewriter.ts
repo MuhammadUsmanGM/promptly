@@ -1,6 +1,6 @@
 import type { CodebaseContext } from "./universal.js";
 import type { Intent } from "./intent.js";
-import type { Agent } from "./index.js";
+import type { Agent, RefineSignals } from "./index.js";
 
 // Builds a single rewritten prompt — not appending footnotes, actually rewriting
 
@@ -9,21 +9,24 @@ export function rewritePrompt(
   intent: Intent,
   context: CodebaseContext,
   agent: Agent,
+  signals: RefineSignals = {},
 ): string {
   const body = (() => {
     switch (intent) {
       case "create":
-        return rewriteCreate(raw, context, agent);
+        return rewriteCreate(raw, context, agent, signals);
       case "fix":
-        return rewriteFix(raw, context, agent);
+        return rewriteFix(raw, context, agent, signals);
       case "refactor":
-        return rewriteRefactor(raw, context, agent);
+        return rewriteRefactor(raw, context, agent, signals);
       case "explain":
-        return rewriteExplain(raw, context);
+        return rewriteExplain(raw, context, signals);
       case "configure":
         return rewriteConfigure(raw, context, agent);
+      case "test":
+        return rewriteTest(raw, context, agent, signals);
       case "generic":
-        return rewriteGeneric(raw, context, agent);
+        return rewriteGeneric(raw, context, agent, signals);
     }
   })();
 
@@ -59,7 +62,7 @@ function buildWorkspacePrelude(ctx: CodebaseContext): string {
   return `[Monorepo detected (${ws.tool}, ${ws.packageCount} packages). No sub-package hint — context is from the repo root. Pass target_files to narrow.]`;
 }
 
-function rewriteCreate(raw: string, ctx: CodebaseContext, agent: Agent): string {
+function rewriteCreate(raw: string, ctx: CodebaseContext, agent: Agent, signals: RefineSignals = {}): string {
   const parts: string[] = [];
 
   // Rewrite the action line with concrete details
@@ -87,7 +90,7 @@ function rewriteCreate(raw: string, ctx: CodebaseContext, agent: Agent): string 
   }
 
   // Relevant existing files the agent should be aware of
-  const relevantFiles = findRelevantFiles(raw, ctx.structure);
+  const relevantFiles = findRelevantFiles(raw, ctx.structure, signals);
   if (relevantFiles.length > 0) {
     parts.push(`Relevant existing files: ${relevantFiles.join(", ")}.`);
   }
@@ -117,7 +120,7 @@ function rewriteCreate(raw: string, ctx: CodebaseContext, agent: Agent): string 
   return parts.filter(Boolean).join(" ");
 }
 
-function rewriteFix(raw: string, ctx: CodebaseContext, agent: Agent): string {
+function rewriteFix(raw: string, ctx: CodebaseContext, agent: Agent, signals: RefineSignals = {}): string {
   const parts: string[] = [];
 
   let action = ensureImperative(raw, agent);
@@ -129,7 +132,7 @@ function rewriteFix(raw: string, ctx: CodebaseContext, agent: Agent): string {
   parts.push(action);
 
   // Point the agent to likely relevant files
-  const relevantFiles = findRelevantFiles(raw, ctx.structure);
+  const relevantFiles = findRelevantFiles(raw, ctx.structure, signals);
   if (relevantFiles.length > 0) {
     parts.push(`Start investigating in: ${relevantFiles.join(", ")}.`);
   }
@@ -143,14 +146,14 @@ function rewriteFix(raw: string, ctx: CodebaseContext, agent: Agent): string {
   return parts.filter(Boolean).join(" ");
 }
 
-function rewriteRefactor(raw: string, ctx: CodebaseContext, agent: Agent): string {
+function rewriteRefactor(raw: string, ctx: CodebaseContext, agent: Agent, signals: RefineSignals = {}): string {
   const parts: string[] = [];
 
   let action = ensureImperative(raw, agent);
   parts.push(action);
 
   // Point to files likely involved in the refactor
-  const relevantFiles = findRelevantFiles(raw, ctx.structure);
+  const relevantFiles = findRelevantFiles(raw, ctx.structure, signals);
   if (relevantFiles.length > 0) {
     parts.push(`Likely files to refactor: ${relevantFiles.join(", ")}.`);
   }
@@ -169,8 +172,8 @@ function rewriteRefactor(raw: string, ctx: CodebaseContext, agent: Agent): strin
   return parts.filter(Boolean).join(" ");
 }
 
-function rewriteExplain(raw: string, ctx: CodebaseContext): string {
-  const relevantFiles = findRelevantFiles(raw, ctx.structure);
+function rewriteExplain(raw: string, ctx: CodebaseContext, signals: RefineSignals = {}): string {
+  const relevantFiles = findRelevantFiles(raw, ctx.structure, signals);
   if (relevantFiles.length === 0) return raw;
   return `${raw} Relevant files to look at: ${relevantFiles.join(", ")}.`;
 }
@@ -206,7 +209,51 @@ function rewriteConfigure(raw: string, ctx: CodebaseContext, agent: Agent): stri
   return parts.filter(Boolean).join(" ");
 }
 
-function rewriteGeneric(raw: string, ctx: CodebaseContext, agent: Agent): string {
+function rewriteTest(raw: string, ctx: CodebaseContext, agent: Agent, signals: RefineSignals = {}): string {
+  const parts: string[] = [];
+
+  let action = ensureImperative(raw, agent);
+
+  // Anchor on the actual test runner — this is the #1 thing the agent needs.
+  if (ctx.stack?.testRunner && !mentionsAny(raw, [ctx.stack.testRunner])) {
+    action = `${action} using ${ctx.stack.testRunner}`;
+  }
+  parts.push(action);
+
+  // Point at the code being tested so the agent doesn't guess
+  const relevantFiles = findRelevantFiles(raw, ctx.structure, signals);
+  if (relevantFiles.length > 0) {
+    parts.push(`Files under test: ${relevantFiles.join(", ")}.`);
+  }
+
+  // Test file placement — colocated vs __tests__ vs test/
+  const testLoc = ctx.conventions?.testLocation;
+  if (ctx.stack?.testRunner) {
+    const placement = testLoc === "__tests__"
+      ? `Place tests in a __tests__/ directory next to the source.`
+      : testLoc === "test_dir"
+        ? `Place tests in the top-level test/ directory.`
+        : testLoc === "spec"
+          ? `Use .spec.* filenames alongside the source.`
+          : `Colocate test files with the source (foo.ts → foo.test.ts).`;
+    parts.push(placement);
+  }
+
+  // Style consistency inside the test file — quotes, semis, exports matter.
+  if (ctx.conventions) {
+    parts.push(formatConventionsAsInstructions(ctx.conventions, "style_only"));
+  }
+
+  parts.push("Cover happy path, edge cases, and error paths. Do not modify the code under test unless a bug is found — flag it instead.");
+
+  if (ctx.stack?.testRunner) {
+    parts.push(`Verify the new tests pass with ${ctx.stack.testRunner}.`);
+  }
+
+  return parts.filter(Boolean).join(" ");
+}
+
+function rewriteGeneric(raw: string, ctx: CodebaseContext, agent: Agent, signals: RefineSignals = {}): string {
   const parts: string[] = [];
 
   let action = ensureImperative(raw, agent);
@@ -217,7 +264,7 @@ function rewriteGeneric(raw: string, ctx: CodebaseContext, agent: Agent): string
   parts.push(action);
 
   // Point to relevant files if any match
-  const relevantFiles = findRelevantFiles(raw, ctx.structure);
+  const relevantFiles = findRelevantFiles(raw, ctx.structure, signals);
   if (relevantFiles.length > 0) {
     parts.push(`Relevant files: ${relevantFiles.join(", ")}.`);
   }
@@ -360,28 +407,33 @@ function extractPromptKeywords(prompt: string): string[] {
 function findRelevantFiles(
   prompt: string,
   structure: CodebaseContext["structure"],
+  signals: RefineSignals = {},
 ): string[] {
   if (!structure) return [];
 
   const keywords = extractPromptKeywords(prompt);
-  if (keywords.length === 0) return [];
+  const targetSet = normalizeSignalFiles(signals.targetFiles);
+  const recentSet = normalizeSignalFiles(signals.recentFiles);
+
+  // If there's nothing to score against at all (no keywords AND no signals),
+  // we can't pick anything.
+  if (keywords.length === 0 && targetSet.size === 0 && recentSet.size === 0) {
+    return [];
+  }
 
   const scored = new Map<string, number>();
 
   // Score files by keyword matches in their path
-  if (structure.files) {
+  if (structure.files && keywords.length > 0) {
     for (const filePath of structure.files) {
       const lower = filePath.toLowerCase();
       let score = 0;
 
       for (const kw of keywords) {
-        // Exact segment match (auth.ts, useAuth.tsx) scores higher
         const segments = lower.split(/[/.\-_]/);
         if (segments.some((s) => s === kw)) {
           score += 3;
-        }
-        // Partial match in path (authMiddleware.ts)
-        else if (lower.includes(kw)) {
+        } else if (lower.includes(kw)) {
           score += 1;
         }
       }
@@ -391,13 +443,12 @@ function findRelevantFiles(
   }
 
   // Boost files that are already scored AND live in a keyword-matching directory
-  if (structure.keyDirs) {
+  if (structure.keyDirs && keywords.length > 0) {
     for (const kw of keywords) {
       for (const [dir, purpose] of Object.entries(structure.keyDirs)) {
         const dirLower = dir.toLowerCase();
         const purposeLower = purpose.toLowerCase();
         if (dirLower.includes(kw) || purposeLower.includes(kw)) {
-          // Only boost files that already have some relevance score
           for (const [filePath, score] of scored.entries()) {
             if (filePath.startsWith(dir + "/")) {
               scored.set(filePath, score + 2);
@@ -408,6 +459,25 @@ function findRelevantFiles(
     }
   }
 
+  // Git signals — recent changes and target files are strong priors for "this is
+  // the area you should look at". They can also seed results when keyword matching
+  // comes up empty (e.g. vague prompts like "finish what I was doing").
+  //
+  // target_files weight (5) > recent git weight (2) because the agent has told us
+  // explicitly vs. us inferring from history.
+  const TARGET_BOOST = 5;
+  const RECENT_BOOST = 2;
+  const candidates = structure.files ?? [];
+  for (const filePath of candidates) {
+    const lower = filePath.toLowerCase();
+    let bonus = 0;
+    if (matchesSignal(lower, targetSet)) bonus += TARGET_BOOST;
+    if (matchesSignal(lower, recentSet)) bonus += RECENT_BOOST;
+    if (bonus > 0) {
+      scored.set(filePath, (scored.get(filePath) ?? 0) + bonus);
+    }
+  }
+
   // Return top results, filtered by minimum score, sorted descending, capped at 8
   const MIN_SCORE = 2;
   return [...scored.entries()]
@@ -415,6 +485,29 @@ function findRelevantFiles(
     .sort((a, b) => b[1] - a[1])
     .slice(0, 8)
     .map(([path]) => path);
+}
+
+function normalizeSignalFiles(files: string[] | undefined): Set<string> {
+  const out = new Set<string>();
+  if (!files) return out;
+  for (const raw of files) {
+    if (!raw) continue;
+    // Normalize separators, drop leading ./, lowercase for comparison
+    const norm = raw.replace(/\\/g, "/").replace(/^\.\//, "").toLowerCase();
+    if (norm.length > 0) out.add(norm);
+  }
+  return out;
+}
+
+function matchesSignal(filePathLower: string, signalSet: Set<string>): boolean {
+  if (signalSet.size === 0) return false;
+  if (signalSet.has(filePathLower)) return true;
+  // Loose match — structure.files are repo-relative, but signals may be absolute
+  // paths or end-fragments. Use suffix match in both directions.
+  for (const sig of signalSet) {
+    if (sig.endsWith(filePathLower) || filePathLower.endsWith(sig)) return true;
+  }
+  return false;
 }
 
 function findRelevantDir(prompt: string, keyDirs: Record<string, string>): string | null {

@@ -1,9 +1,14 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { watch, type FSWatcher } from "node:fs";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 import { join } from "node:path";
+
+const execFileAsync = promisify(execFile);
 import { analyzeCodebase } from "../analyzer/index.js";
 import { refinePrompt, getRulesDescription, type Agent, type CodebaseContext } from "../rules/index.js";
+import { loadPersistedContext, persistContext } from "./persistentCache.js";
 
 // Cache analysis per analysis root — invalidated by file watchers or 30min TTL.
 // Key is the resolved analysis root (not projectPath) so sibling packages in a monorepo
@@ -59,6 +64,39 @@ function setCachedAnalysis(cacheKey: string, projectPath: string, context: Codeb
   analysisCache.set(cacheKey, { context, timestamp: Date.now(), watchers });
 }
 
+// Small per-call cache for recent git files — same MCP server handles many calls,
+// and shelling out to git is cheap but not free. 60s TTL is well inside "fresh
+// enough to be useful" and well outside "costs noticeable latency per call".
+const GIT_RECENT_TTL_MS = 60 * 1000;
+const gitRecentCache = new Map<string, { files: string[]; timestamp: number }>();
+
+async function getRecentlyChangedFiles(projectPath: string): Promise<string[]> {
+  const cached = gitRecentCache.get(projectPath);
+  if (cached && Date.now() - cached.timestamp < GIT_RECENT_TTL_MS) {
+    return cached.files;
+  }
+  try {
+    // -20 recent commits, name-only output, no pager. Fast even on big repos.
+    const { stdout } = await execFileAsync(
+      "git",
+      ["log", "-20", "--name-only", "--pretty=format:", "--no-renames"],
+      { cwd: projectPath, timeout: 3000, maxBuffer: 1024 * 1024 },
+    );
+    const files = [...new Set(
+      stdout
+        .split(/\r?\n/)
+        .map((l) => l.trim())
+        .filter((l) => l.length > 0),
+    )];
+    gitRecentCache.set(projectPath, { files, timestamp: Date.now() });
+    return files;
+  } catch {
+    // Not a git repo, no git on PATH, timeout — all fine. Just means no signal.
+    gitRecentCache.set(projectPath, { files: [], timestamp: Date.now() });
+    return [];
+  }
+}
+
 // Pull file-path-looking tokens out of the raw prompt ("fix src/foo.ts", "update apps/web/...")
 // so we can route monorepo analysis to the right sub-package even when the caller didn't
 // pass explicit target_files.
@@ -85,7 +123,7 @@ export function registerTools(server: McpServer, debug = false) {
 
   server.tool(
     "refine_prompt",
-    `Analyzes the codebase and rewrites a coding prompt with project context baked in. Detects intent (create/fix/refactor/explain/configure) and tailors the rewrite accordingly.
+    `Analyzes the codebase and rewrites a coding prompt with project context baked in. Detects intent (create/fix/refactor/explain/configure/test) and tailors the rewrite accordingly.
 
 WHEN TO CALL: Any prompt to write, fix, refactor, explain, or configure code.
 SKIP FOR: General chat, math, non-coding questions.
@@ -120,7 +158,17 @@ Returns a rewritten prompt. Execute it instead of the original.`,
         const fastKey = hints.length === 0 ? `${project_path}::${agent}` : null;
         if (fastKey) {
           context = getCachedAnalysis(fastKey);
-          if (context) log("cache hit (no-hints fast path)");
+          if (context) log("cache hit (no-hints fast path, memory)");
+          if (!context) {
+            // Fall back to disk — survives MCP restarts. Fingerprinted by
+            // package.json + tsconfig.json content/mtime, so stale-on-dep-change.
+            context = await loadPersistedContext(project_path, fastKey);
+            if (context) {
+              log("cache hit (no-hints fast path, disk)");
+              // Re-populate memory + watchers so subsequent calls hit the in-memory path.
+              setCachedAnalysis(fastKey, project_path, context);
+            }
+          }
         }
 
         if (!context) {
@@ -135,9 +183,19 @@ Returns a rewritten prompt. Execute it instead of the original.`,
           const rootKey = context.workspace?.analysisRoot ?? project_path;
           const key = `${rootKey}::${agent}`;
           setCachedAnalysis(key, project_path, context);
+          // Persist to disk so the next MCP restart skips the analysis entirely.
+          await persistContext(project_path, key, context);
         }
 
-        const { refined, intent } = refinePrompt(raw_prompt, context, agent as Agent);
+        // Git signals are computed per-call (not cached with analysis) because
+        // recent history is exactly the thing that changes between MCP calls —
+        // using a stale snapshot would defeat the point.
+        const recentFiles = await getRecentlyChangedFiles(project_path);
+
+        const { refined, intent } = refinePrompt(raw_prompt, context, agent as Agent, {
+          targetFiles: target_files,
+          recentFiles,
+        });
         log(`done — intent=${intent}`);
 
         return {
