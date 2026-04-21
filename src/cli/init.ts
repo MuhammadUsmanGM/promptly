@@ -112,111 +112,204 @@ async function writeInstructionFile(filePath: string): Promise<void> {
 
 // --- Main init ---
 
-export async function init() {
+export type Scope = "global" | "project";
+
+export interface InitOptions {
+  // Pre-selected agent — when set, the agent prompt is skipped. Invalid values
+  // cause a hard exit (scripts should fail loudly on typos, not fall through
+  // to an interactive prompt).
+  agent?: AgentId;
+  // Pre-selected scope. Same contract: invalid → exit, valid → skip the prompt.
+  scope?: Scope;
+}
+
+export async function init(options: InitOptions = {}) {
+  // Fully non-interactive path: both agent and scope supplied via flags.
+  // This is the happy path for CI / provisioning scripts — no TTY needed,
+  // no prompts, deterministic behavior.
+  if (options.agent && options.scope) {
+    await runInitOnce(options.agent, options.scope);
+    return;
+  }
+
   // Loop so "← Back" at step 2 returns to step 1
   while (true) {
-    // Step 1: Select agent
+    // Step 1: Agent — use flag if supplied, otherwise prompt.
     let agentId: AgentId;
-    try {
-      agentId = await select<AgentId>({
-        message: "Which AI coding agent are you using?",
-        choices: [
-          { name: "Claude Code", value: "claude_code", description: "Anthropic's CLI agent" },
-          { name: "Cursor", value: "cursor", description: "AI-powered code editor" },
-          { name: "Gemini CLI", value: "gemini_cli", description: "Google's CLI agent" },
-          { name: "Qwen Code", value: "qwen_code", description: "Alibaba's CLI agent" },
-        ],
-      });
-    } catch {
-      // Ctrl+C — exit gracefully
-      console.log("\n  \x1b[90m✦ Setup cancelled.\x1b[0m\n");
-      return;
+    if (options.agent) {
+      agentId = options.agent;
+    } else {
+      try {
+        agentId = await select<AgentId>({
+          message: "Which AI coding agent are you using?",
+          choices: [
+            { name: "Claude Code", value: "claude_code", description: "Anthropic's CLI agent" },
+            { name: "Cursor", value: "cursor", description: "AI-powered code editor" },
+            { name: "Gemini CLI", value: "gemini_cli", description: "Google's CLI agent" },
+            { name: "Qwen Code", value: "qwen_code", description: "Alibaba's CLI agent" },
+          ],
+        });
+      } catch {
+        // Ctrl+C — exit gracefully
+        console.log("\n  \x1b[90m✦ Setup cancelled.\x1b[0m\n");
+        return;
+      }
     }
 
     const agent = AGENTS[agentId];
 
-    // Step 2: Select scope (Esc goes back to step 1)
-    const hasGlobalInstructions = !!agent.instructions.global;
-    const hasProjectMcp = !!agent.mcpConfig.project;
+    // Step 2: Scope — use flag if supplied, otherwise prompt (Esc goes back to step 1).
+    let scope: Scope;
+    if (options.scope) {
+      scope = options.scope;
+    } else {
+      const hasGlobalInstructions = !!agent.instructions.global;
+      const hasProjectMcp = !!agent.mcpConfig.project;
 
-    let scope: "global" | "project";
-    const ac = new AbortController();
-    let escPressed = false;
-    let escTimer: ReturnType<typeof setTimeout> | null = null;
+      const ac = new AbortController();
+      let escPressed = false;
+      let escTimer: ReturnType<typeof setTimeout> | null = null;
 
-    const escHandler = (data: Buffer) => {
-      // Esc key = lone 0x1b byte. Arrow keys also start with 0x1b but are
-      // followed immediately by more bytes (e.g. \x1b[A). If we get a single
-      // 0x1b, wait a tiny bit — if no follow-up arrives, it's a real Esc press.
-      if (data.length === 1 && data[0] === 0x1b) {
-        escTimer = setTimeout(() => {
-          escPressed = true;
-          ac.abort();
-        }, 50);
-      } else if (escTimer && data.length > 0 && data[0] === 0x5b) {
-        // Follow-up byte from arrow key sequence — cancel the Esc
-        clearTimeout(escTimer);
-        escTimer = null;
+      const escHandler = (data: Buffer) => {
+        // Esc key = lone 0x1b byte. Arrow keys also start with 0x1b but are
+        // followed immediately by more bytes (e.g. \x1b[A). If we get a single
+        // 0x1b, wait a tiny bit — if no follow-up arrives, it's a real Esc press.
+        if (data.length === 1 && data[0] === 0x1b) {
+          escTimer = setTimeout(() => {
+            escPressed = true;
+            ac.abort();
+          }, 50);
+        } else if (escTimer && data.length > 0 && data[0] === 0x5b) {
+          // Follow-up byte from arrow key sequence — cancel the Esc
+          clearTimeout(escTimer);
+          escTimer = null;
+        }
+      };
+      process.stdin.on("data", escHandler);
+
+      try {
+        scope = await select<Scope>({
+          message: "Where should Promptly be active? \x1b[90m(esc to go back)\x1b[0m",
+          choices: [
+            {
+              name: "Global (all projects)",
+              value: "global" as const,
+              description: hasGlobalInstructions
+                ? `MCP + instructions applied everywhere`
+                : `MCP config applied globally, instructions per-project`,
+            },
+            {
+              name: "This project only",
+              value: "project" as const,
+              description: hasProjectMcp
+                ? "MCP + instructions scoped to this directory"
+                : "MCP is global, instructions scoped to this directory",
+            },
+          ],
+        }, { signal: ac.signal });
+      } catch {
+        if (escTimer) clearTimeout(escTimer);
+        process.stdin.off("data", escHandler);
+        if (escPressed) {
+          // Esc — go back to step 1 only if the agent was interactively chosen.
+          // If --agent was supplied, the only interactive step is the scope;
+          // Esc there has nothing to go back to, so treat it as cancel.
+          if (options.agent) {
+            console.log("\n  \x1b[90m✦ Setup cancelled.\x1b[0m\n");
+            return;
+          }
+          continue;
+        }
+        // Ctrl+C — exit gracefully
+        console.log("\n  \x1b[90m✦ Setup cancelled.\x1b[0m\n");
+        return;
       }
-    };
-    process.stdin.on("data", escHandler);
-
-    try {
-      scope = await select<"global" | "project">({
-        message: "Where should Promptly be active? \x1b[90m(esc to go back)\x1b[0m",
-        choices: [
-          {
-            name: "Global (all projects)",
-            value: "global" as const,
-            description: hasGlobalInstructions
-              ? `MCP + instructions applied everywhere`
-              : `MCP config applied globally, instructions per-project`,
-          },
-          {
-            name: "This project only",
-            value: "project" as const,
-            description: hasProjectMcp
-              ? "MCP + instructions scoped to this directory"
-              : "MCP is global, instructions scoped to this directory",
-          },
-        ],
-      }, { signal: ac.signal });
-    } catch {
       if (escTimer) clearTimeout(escTimer);
       process.stdin.off("data", escHandler);
-      if (escPressed) continue; // Esc — go back to step 1
-      // Ctrl+C — exit gracefully
-      console.log("\n  \x1b[90m✦ Setup cancelled.\x1b[0m\n");
-      return;
-    }
-    if (escTimer) clearTimeout(escTimer);
-    process.stdin.off("data", escHandler);
 
-    console.log("");
-
-    // Step 3: Write MCP config
-    if (scope === "project" && agent.mcpConfig.project) {
-      const projectMcpPath = join(process.cwd(), agent.mcpConfig.project);
-      await writeMcpConfig(projectMcpPath);
-    } else {
-      await writeMcpConfig(agent.mcpConfig.global);
+      console.log("");
     }
 
-    // Step 4: Write instruction file
-    if (scope === "global" && agent.instructions.global) {
-      await writeInstructionFile(agent.instructions.global);
-    } else {
-      const projectInstructionPath = join(process.cwd(), agent.instructions.project);
-      await writeInstructionFile(projectInstructionPath);
-
-      if (scope === "global" && !agent.instructions.global) {
-        console.log(`  \x1b[33mℹ\x1b[0m ${agent.label} instructions are per-project. Add ${agent.instructions.project} to each project.`);
-      }
-    }
-
-    console.log("");
-    console.log(`  ✦ Done! ${agent.restartMsg}`);
-    console.log("");
+    await runInitOnce(agentId, scope);
     break;
   }
+}
+
+// Actually write the MCP config + instruction file for a (agent, scope) pair.
+// Shared by the interactive and non-interactive paths so they can't drift.
+async function runInitOnce(agentId: AgentId, scope: Scope): Promise<void> {
+  const agent = AGENTS[agentId];
+
+  // Step 3: Write MCP config
+  if (scope === "project" && agent.mcpConfig.project) {
+    const projectMcpPath = join(process.cwd(), agent.mcpConfig.project);
+    await writeMcpConfig(projectMcpPath);
+  } else {
+    await writeMcpConfig(agent.mcpConfig.global);
+  }
+
+  // Step 4: Write instruction file
+  if (scope === "global" && agent.instructions.global) {
+    await writeInstructionFile(agent.instructions.global);
+  } else {
+    const projectInstructionPath = join(process.cwd(), agent.instructions.project);
+    await writeInstructionFile(projectInstructionPath);
+
+    if (scope === "global" && !agent.instructions.global) {
+      console.log(`  \x1b[33mℹ\x1b[0m ${agent.label} instructions are per-project. Add ${agent.instructions.project} to each project.`);
+    }
+  }
+
+  console.log("");
+  console.log(`  ✦ Done! ${agent.restartMsg}`);
+  console.log("");
+}
+
+// --- Flag parsing (exported for cli/index.ts) ---
+
+const VALID_AGENTS: AgentId[] = ["claude_code", "cursor", "gemini_cli", "qwen_code"];
+
+export function parseInitFlags(args: string[]): InitOptions {
+  const opts: InitOptions = {};
+  let sawGlobal = false;
+  let sawProject = false;
+
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
+    if (arg === "--global") {
+      sawGlobal = true;
+      opts.scope = "global";
+    } else if (arg === "--project") {
+      sawProject = true;
+      opts.scope = "project";
+    } else if (arg === "--agent") {
+      const val = args[++i];
+      if (!val) {
+        console.error(`  \x1b[31m✖ --agent requires a value (${VALID_AGENTS.join(", ")})\x1b[0m`);
+        process.exit(1);
+      }
+      if (!VALID_AGENTS.includes(val as AgentId)) {
+        console.error(`  \x1b[31m✖ Unknown agent: ${val}. Valid: ${VALID_AGENTS.join(", ")}\x1b[0m`);
+        process.exit(1);
+      }
+      opts.agent = val as AgentId;
+    } else if (arg.startsWith("--agent=")) {
+      const val = arg.slice("--agent=".length);
+      if (!VALID_AGENTS.includes(val as AgentId)) {
+        console.error(`  \x1b[31m✖ Unknown agent: ${val}. Valid: ${VALID_AGENTS.join(", ")}\x1b[0m`);
+        process.exit(1);
+      }
+      opts.agent = val as AgentId;
+    } else {
+      console.error(`  \x1b[31m✖ Unknown flag for 'init': ${arg}\x1b[0m`);
+      process.exit(1);
+    }
+  }
+
+  if (sawGlobal && sawProject) {
+    console.error("  \x1b[31m✖ --global and --project are mutually exclusive\x1b[0m");
+    process.exit(1);
+  }
+
+  return opts;
 }
