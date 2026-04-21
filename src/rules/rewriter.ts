@@ -10,20 +10,36 @@ export function rewritePrompt(
   context: CodebaseContext,
   agent: Agent,
 ): string {
-  switch (intent) {
-    case "create":
-      return rewriteCreate(raw, context, agent);
-    case "fix":
-      return rewriteFix(raw, context, agent);
-    case "refactor":
-      return rewriteRefactor(raw, context, agent);
-    case "explain":
-      return rewriteExplain(raw, context);
-    case "configure":
-      return rewriteConfigure(raw, context, agent);
-    case "generic":
-      return rewriteGeneric(raw, context, agent);
+  const body = (() => {
+    switch (intent) {
+      case "create":
+        return rewriteCreate(raw, context, agent);
+      case "fix":
+        return rewriteFix(raw, context, agent);
+      case "refactor":
+        return rewriteRefactor(raw, context, agent);
+      case "explain":
+        return rewriteExplain(raw, context);
+      case "configure":
+        return rewriteConfigure(raw, context, agent);
+      case "generic":
+        return rewriteGeneric(raw, context, agent);
+    }
+  })();
+
+  // Prefix with a workspace note so the agent knows whether context is scoped to a
+  // specific sub-package or aggregated at the monorepo root. Only shown for monorepos.
+  const prelude = buildWorkspacePrelude(context);
+  return prelude ? `${prelude} ${body}` : body;
+}
+
+function buildWorkspacePrelude(ctx: CodebaseContext): string {
+  const ws = ctx.workspace;
+  if (!ws?.isMonorepo) return "";
+  if (ws.isSubPackage) {
+    return `[Monorepo — analysis scoped to ${ws.analysisRootLabel} (${ws.tool}).]`;
   }
+  return `[Monorepo detected (${ws.tool}, ${ws.packageCount} packages). No sub-package hint — context is from the repo root. Pass target_files to narrow.]`;
 }
 
 function rewriteCreate(raw: string, ctx: CodebaseContext, agent: Agent): string {

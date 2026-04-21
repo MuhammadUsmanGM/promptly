@@ -3,6 +3,16 @@ export interface CodebaseContext {
   conventions?: ConventionInfo;
   structure?: StructureInfo;
   dependencies?: DependencyInfo;
+  workspace?: WorkspaceContext;
+}
+
+export interface WorkspaceContext {
+  isMonorepo: boolean;
+  tool: "npm" | "yarn" | "pnpm" | "turbo" | "none";
+  analysisRoot: string;       // absolute path that was analyzed
+  analysisRootLabel: string;  // "." for repo root, or e.g. "apps/web" for a sub-package
+  isSubPackage: boolean;      // true if analysis was narrowed into a sub-package
+  packageCount: number;       // total number of packages in the workspace
 }
 
 export interface StackInfo {

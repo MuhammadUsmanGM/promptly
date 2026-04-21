@@ -6,6 +6,7 @@ export type {
   StructureInfo,
   DependencyInfo,
   DependencyEntry,
+  WorkspaceContext,
 } from "./universal.js";
 
 export type { Intent } from "./intent.js";
