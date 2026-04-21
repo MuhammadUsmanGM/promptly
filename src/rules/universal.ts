@@ -4,6 +4,13 @@ export interface CodebaseContext {
   structure?: StructureInfo;
   dependencies?: DependencyInfo;
   workspace?: WorkspaceContext;
+  userRules?: UserRulesContext;
+}
+
+export interface UserRulesContext {
+  source: string;       // file the rules came from (e.g. CLAUDE.md)
+  content: string;      // truncated rules text
+  truncated: boolean;   // whether the source file was longer than our cap
 }
 
 export interface WorkspaceContext {

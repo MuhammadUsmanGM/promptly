@@ -27,10 +27,27 @@ export function rewritePrompt(
     }
   })();
 
-  // Prefix with a workspace note so the agent knows whether context is scoped to a
-  // specific sub-package or aggregated at the monorepo root. Only shown for monorepos.
-  const prelude = buildWorkspacePrelude(context);
-  return prelude ? `${prelude} ${body}` : body;
+  // Order matters: user rules first (they're ground truth and should take precedence),
+  // then workspace scoping, then the refined prompt body.
+  const preludes: string[] = [];
+  const userRulesBlock = buildUserRulesBlock(context);
+  if (userRulesBlock) preludes.push(userRulesBlock);
+  const workspaceNote = buildWorkspacePrelude(context);
+  if (workspaceNote) preludes.push(workspaceNote);
+
+  return preludes.length > 0 ? `${preludes.join("\n\n")}\n\n${body}` : body;
+}
+
+function buildUserRulesBlock(ctx: CodebaseContext): string {
+  const rules = ctx.userRules;
+  if (!rules) return "";
+  // Strip leading markdown headers ("# Project Guidelines") to save tokens — the
+  // agent doesn't need them to understand the content. Keep interior headers intact
+  // since they structure the rules.
+  const trimmed = rules.content.replace(/^#[^\n]*\n+/, "").trim();
+  const suffix = rules.truncated ? "\n[…rules truncated]" : "";
+  const filename = rules.source.split(/[/\\]/).pop() ?? rules.source;
+  return `[User rules from ${filename} — these override anything below when they conflict]\n${trimmed}${suffix}`;
 }
 
 function buildWorkspacePrelude(ctx: CodebaseContext): string {

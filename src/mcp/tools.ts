@@ -115,8 +115,9 @@ Returns a rewritten prompt. Execute it instead of the original.`,
         let context: CodebaseContext | null = null;
 
         // Fast path: if there are no hints, we can use projectPath as the cache key
-        // (resolveAnalysisRoot would stay at the root anyway).
-        const fastKey = hints.length === 0 ? project_path : null;
+        // (resolveAnalysisRoot would stay at the root anyway). We bake the agent into
+        // the key so different agents don't share cached userRules.
+        const fastKey = hints.length === 0 ? `${project_path}::${agent}` : null;
         if (fastKey) {
           context = getCachedAnalysis(fastKey);
           if (context) log("cache hit (no-hints fast path)");
@@ -124,8 +125,15 @@ Returns a rewritten prompt. Execute it instead of the original.`,
 
         if (!context) {
           log("cache miss — analyzing codebase");
-          context = await analyzeCodebase(project_path, { depth: 3, hints });
-          const key = context.workspace?.analysisRoot ?? project_path;
+          context = await analyzeCodebase(project_path, {
+            depth: 3,
+            hints,
+            agent: agent as Agent,
+          });
+          // Key cache by (analysis root + agent) — different agents look up different
+          // instruction files, so their contexts aren't interchangeable.
+          const rootKey = context.workspace?.analysisRoot ?? project_path;
+          const key = `${rootKey}::${agent}`;
           setCachedAnalysis(key, project_path, context);
         }
 

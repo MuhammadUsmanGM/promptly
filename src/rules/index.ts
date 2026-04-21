@@ -7,6 +7,7 @@ export type {
   DependencyInfo,
   DependencyEntry,
   WorkspaceContext,
+  UserRulesContext,
 } from "./universal.js";
 
 export type { Intent } from "./intent.js";
