@@ -1,7 +1,8 @@
 import { readFile, readdir, stat } from "node:fs/promises";
-import { join, extname, basename } from "node:path";
+import { join, extname, basename, relative } from "node:path";
 import type { ConventionInfo, ConventionConfidence } from "../rules/index.js";
 import { detectConfigConventions } from "./configConventions.js";
+import { loadGitignore, type GitignoreMatcher } from "./gitignore.js";
 
 // Minimum sample sizes for high confidence
 const MIN_SAMPLES_NAMING = 8;    // need enough variable names
@@ -26,7 +27,13 @@ async function sampleFiles(projectPath: string, max = 15): Promise<string[]> {
   const files: string[] = [];
   const srcDir = join(projectPath, "src");
 
-  async function walk(dir: string, depth = 0) {
+  // Respect .gitignore when sampling — generated files (dist/, *.generated.ts)
+  // skew detected conventions away from what humans actually wrote. loadGitignore
+  // returns a no-op matcher if .gitignore is missing or malformed, so this is
+  // always safe to call.
+  const ignore = await loadGitignore(projectPath);
+
+  async function walk(dir: string, depth = 0, matcher: GitignoreMatcher) {
     if (depth > 4 || files.length >= max) return;
     try {
       const entries = await readdir(dir, { withFileTypes: true });
@@ -35,9 +42,12 @@ async function sampleFiles(projectPath: string, max = 15): Promise<string[]> {
         if (entry.name.startsWith(".") || entry.name === "node_modules" || entry.name === "dist" || entry.name === "build") continue;
 
         const fullPath = join(dir, entry.name);
+        const relPath = relative(projectPath, fullPath).replace(/\\/g, "/");
         if (entry.isDirectory()) {
-          await walk(fullPath, depth + 1);
+          if (matcher.isIgnoredDir(relPath)) continue;
+          await walk(fullPath, depth + 1, matcher);
         } else if (CODE_EXTENSIONS.has(extname(entry.name))) {
+          if (matcher.isIgnored(relPath)) continue;
           files.push(fullPath);
         }
       }
@@ -47,9 +57,9 @@ async function sampleFiles(projectPath: string, max = 15): Promise<string[]> {
   // Prefer src/ if it exists
   try {
     await stat(srcDir);
-    await walk(srcDir);
+    await walk(srcDir, 0, ignore);
   } catch {
-    await walk(projectPath);
+    await walk(projectPath, 0, ignore);
   }
 
   return files;

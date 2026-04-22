@@ -1,6 +1,7 @@
 import { readdir } from "node:fs/promises";
 import { join, relative } from "node:path";
 import type { StructureInfo } from "../rules/index.js";
+import { loadGitignore } from "./gitignore.js";
 
 const SKIP_DIRS = new Set([
   "node_modules", ".git", ".next", ".nuxt", ".svelte-kit",
@@ -83,6 +84,12 @@ export async function detectStructure(
   const isInKeyDir = (relDir: string): boolean =>
     keyDirPaths.some((k) => relDir === k || relDir.startsWith(k + "/"));
 
+  // .gitignore is additive to SKIP_DIRS — it catches repo-specific generated
+  // files (dist/, *.generated.ts, coverage/) that pollute the sampled slice
+  // and skew conventions. SKIP_DIRS stays as a backstop for repos with no
+  // .gitignore (node_modules etc. are always skipped regardless).
+  const ignore = await loadGitignore(projectPath);
+
   async function walk(dir: string, depth: number, prefix: string) {
     if (depth > maxDepth) return;
 
@@ -93,14 +100,23 @@ export async function detectStructure(
       return;
     }
 
-    const subDirs = entries.filter((e) => e.isDirectory() && !SKIP_DIRS.has(e.name) && !e.name.startsWith("."));
-    const dirFiles = entries.filter((e) => e.isFile() && !e.name.startsWith("."));
+    const relDir = relative(projectPath, dir).replace(/\\/g, "/");
+
+    const subDirs = entries.filter((e) => {
+      if (!e.isDirectory() || SKIP_DIRS.has(e.name) || e.name.startsWith(".")) return false;
+      const relSub = relDir === "" ? e.name : `${relDir}/${e.name}`;
+      return !ignore.isIgnoredDir(relSub);
+    });
+    const dirFiles = entries.filter((e) => {
+      if (!e.isFile() || e.name.startsWith(".")) return false;
+      const relFile = relDir === "" ? e.name : `${relDir}/${e.name}`;
+      return !ignore.isIgnored(relFile);
+    });
 
     totalFiles += dirFiles.length;
 
     // Collect every file we see — we'll sort + cap at the end so the cap
     // rejects less-relevant entries, not whichever ones happened to come last.
-    const relDir = relative(projectPath, dir).replace(/\\/g, "/");
     const inKey = relDir === "" ? false : isInKeyDir(relDir);
     for (const f of dirFiles) {
       const relPath = relDir === "" ? f.name : `${relDir}/${f.name}`;
