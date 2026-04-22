@@ -413,11 +413,17 @@ function findRelevantFiles(
 
   const keywords = extractPromptKeywords(prompt);
   const targetSet = normalizeSignalFiles(signals.targetFiles);
+  const contextSet = normalizeSignalFiles(signals.contextFiles);
   const recentSet = normalizeSignalFiles(signals.recentFiles);
 
   // If there's nothing to score against at all (no keywords AND no signals),
   // we can't pick anything.
-  if (keywords.length === 0 && targetSet.size === 0 && recentSet.size === 0) {
+  if (
+    keywords.length === 0 &&
+    targetSet.size === 0 &&
+    contextSet.size === 0 &&
+    recentSet.size === 0
+  ) {
     return [];
   }
 
@@ -459,19 +465,23 @@ function findRelevantFiles(
     }
   }
 
-  // Git signals — recent changes and target files are strong priors for "this is
-  // the area you should look at". They can also seed results when keyword matching
-  // comes up empty (e.g. vague prompts like "finish what I was doing").
-  //
-  // target_files weight (5) > recent git weight (2) because the agent has told us
-  // explicitly vs. us inferring from history.
+  // Signal boosts — priors for "this is the area you should look at". Three
+  // sources ordered by how direct the signal is:
+  //   target_files  (5): agent said "the prompt is about these"
+  //   context_files (3): agent said "these are on the user's screen right now"
+  //   recent git    (2): we inferred from commit history
+  // These can also seed results when keyword matching comes up empty (e.g. vague
+  // prompts like "finish what I was doing"). Boosts stack if a file is in
+  // multiple buckets.
   const TARGET_BOOST = 5;
+  const CONTEXT_BOOST = 3;
   const RECENT_BOOST = 2;
   const candidates = structure.files ?? [];
   for (const filePath of candidates) {
     const lower = filePath.toLowerCase();
     let bonus = 0;
     if (matchesSignal(lower, targetSet)) bonus += TARGET_BOOST;
+    if (matchesSignal(lower, contextSet)) bonus += CONTEXT_BOOST;
     if (matchesSignal(lower, recentSet)) bonus += RECENT_BOOST;
     if (bonus > 0) {
       scored.set(filePath, (scored.get(filePath) ?? 0) + bonus);

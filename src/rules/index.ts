@@ -21,12 +21,18 @@ import type { Intent } from "./intent.js";
 export type Agent = "claude_code" | "cursor" | "gemini_cli" | "qwen_code" | "generic";
 
 export interface RefineSignals {
-  // Files the agent said the user is actively working on (e.g. open buffers,
-  // paths named in the prompt). Boost these in file-relevance scoring.
+  // Files the agent said the user is actively working on (e.g. paths named in
+  // the prompt, explicit targets of the task). Strongest boost in file-relevance
+  // scoring — the agent is telling us "this is what the prompt is about".
   targetFiles?: string[];
-  // Files touched in recent git history. Same idea — likely relevant to the
-  // current task. Gathered per-call since git state changes faster than the
-  // analysis cache's TTL.
+  // Files the agent currently has open / is already looking at. Weaker than
+  // targetFiles (the agent hasn't said they're about the task, just that
+  // they're on screen) but stronger than git history (the agent picked them,
+  // not just "something touched them recently").
+  contextFiles?: string[];
+  // Files touched in recent git history. Weakest of the three — likely
+  // relevant, but inferred rather than stated. Gathered per-call since git
+  // state changes faster than the analysis cache's TTL.
   recentFiles?: string[];
 }
 

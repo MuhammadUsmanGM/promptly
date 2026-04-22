@@ -128,7 +128,7 @@ export function registerTools(server: McpServer, debug = false) {
 WHEN TO CALL: Any prompt to write, fix, refactor, explain, or configure code.
 SKIP FOR: General chat, math, non-coding questions.
 
-In monorepos, pass target_files (paths the user mentioned or files you're currently working on) so Promptly narrows analysis to the right sub-package.
+In monorepos, pass target_files (paths the user mentioned or files the prompt is about) so Promptly narrows analysis to the right sub-package. Pass context_files for files you have open but weren't explicitly named — they give relevance scoring a real anchor.
 
 Returns a rewritten prompt. Execute it instead of the original.`,
     {
@@ -136,10 +136,13 @@ Returns a rewritten prompt. Execute it instead of the original.`,
       project_path: z.string().describe("Absolute path to the project root"),
       agent: z.enum(["claude_code", "cursor", "gemini_cli", "qwen_code", "generic"]).optional().default("claude_code"),
       target_files: z.array(z.string()).optional().describe(
-        "Optional file paths the agent is working on or the prompt references. Used to pick the right sub-package in a monorepo and to boost relevance scoring.",
+        "File paths the prompt is explicitly about (paths named in the prompt, files the task targets). Used to pick the right sub-package in a monorepo and as the strongest signal in relevance scoring.",
+      ),
+      context_files: z.array(z.string()).optional().describe(
+        "File paths the agent currently has open or is already looking at, but that aren't explicit targets. Weaker signal than target_files — used to boost relevance scoring without narrowing monorepo analysis.",
       ),
     },
-    async ({ raw_prompt, project_path, agent, target_files }) => {
+    async ({ raw_prompt, project_path, agent, target_files, context_files }) => {
       log(`refine_prompt called — path=${project_path}, agent=${agent}`);
       try {
         // Combine explicit target_files with hints extracted from the prompt text.
@@ -194,6 +197,7 @@ Returns a rewritten prompt. Execute it instead of the original.`,
 
         const { refined, intent } = refinePrompt(raw_prompt, context, agent as Agent, {
           targetFiles: target_files,
+          contextFiles: context_files,
           recentFiles,
         });
         log(`done — intent=${intent}`);
