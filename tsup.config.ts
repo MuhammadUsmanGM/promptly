@@ -5,6 +5,7 @@ export default defineConfig({
     "src/bin/promptly.ts",
     "src/mcp/server.ts",
     "src/mcp/persistentCache.ts",
+    "src/analyzer/stack.ts",
     "src/cli/index.ts",
     "src/postinstall.ts",
   ],
