@@ -26,7 +26,7 @@ You type a prompt
        ↓
 Your AI agent calls Promptly's MCP tools
        ↓
-Promptly scans your project (stack, conventions, structure, deps)
+Promptly scans your project (stack, conventions, structure, workspace, user rules)
        ↓
 Promptly refines your prompt with real codebase context
        ↓
@@ -41,11 +41,12 @@ No external API call. No latency from a second model. Your agent just becomes mo
 
 | Feature | What It Does |
 |---------|-------------|
-| **Stack Detection** | Reads `package.json`, `tsconfig.json`, `go.mod`, `Cargo.toml`, etc. Detects framework, language, styling, ORM, package manager, runtime |
-| **Convention Analysis** | Samples your code to detect naming conventions, file naming, export style, quotes, semicolons, indentation, test patterns |
-| **Structure Mapping** | Maps your project tree, identifies key directories (components, hooks, utils, api, etc.) |
-| **Dependency Awareness** | Categorizes all dependencies by purpose — UI, state, testing, build, HTTP, database, auth |
-| **Prompt Refinement** | Applies agent-specific rules using real codebase context to produce better prompts |
+| **Stack Detection** | Reads `package.json`, `tsconfig.json`, `go.mod`, `Cargo.toml`, `pyproject.toml`, `deno.json`, etc. Detects framework, language, styling, ORM, test runner, package manager, runtime |
+| **Convention Analysis** | Reads tool configs (`.prettierrc`, `.editorconfig`, ESLint) as ground truth, then samples code to infer file naming, export style, component pattern, quotes, semicolons, indentation, and test location — each with a confidence score |
+| **Structure Mapping** | Walks your project, identifies key directories (components, hooks, utils, api, routes, stores, etc.), and surfaces a ranked slice of files for relevance scoring |
+| **Workspace Awareness** | Detects npm / yarn / pnpm / Turborepo monorepos and narrows analysis to the sub-package the prompt is about via `target_files` hints |
+| **User Rules Prelude** | Inlines your `CLAUDE.md` / `.cursorrules` / `GEMINI.md` / `QWEN.md` at the top of every refined prompt so your ground-truth rules always win |
+| **Intent-Aware Rewriting** | Classifies each prompt as create / fix / refactor / explain / configure / test and rewrites with the conventions and constraints that actually fit that intent |
 
 ---
 
@@ -87,12 +88,16 @@ This shows which agents are configured and where the MCP config + instruction fi
 ## CLI Commands
 
 ```bash
-promptly init          # Set up Promptly (Claude Code, Cursor, Gemini CLI, or Qwen Code)
-promptly mcp           # Start MCP server (called automatically by your agent)
-promptly status        # Check which agents are configured
-promptly rules [agent] # Print refinement rules (claude_code|cursor|gemini_cli|qwen_code|generic)
-promptly --version     # Print version
+promptly init            # Set up Promptly (Claude Code, Cursor, Gemini CLI, or Qwen Code)
+promptly mcp             # Start MCP server (called automatically by your agent)
+promptly status          # Check which agents are configured
+promptly doctor          # Validate wiring (MCP config parses, command resolves, instructions present)
+promptly inspect [path]  # Print what analyzeCodebase sees for a project (add --json for jq)
+promptly rules [agent]   # Print refinement rules (claude_code|cursor|gemini_cli|qwen_code|generic)
+promptly --version       # Print version
 ```
+
+`status` and `doctor` also accept `--json` for scripting. `doctor --strict` exits 1 on warnings (for CI gating). `inspect` accepts `--agent <id>` and `--hints <paths>` to preview what monorepo narrowing will pick.
 
 ---
 
@@ -100,20 +105,25 @@ promptly --version     # Print version
 
 ### `refine_prompt`
 
-The main tool. Analyzes your codebase and refines the prompt in a single call. Scans stack, conventions, structure, and dependencies, then returns a context-aware refined prompt. Results are cached for 30 minutes and automatically invalidated when `package.json` or `tsconfig.json` changes.
+The main tool. Detects intent, analyzes your codebase, and returns a rewritten prompt with project context baked in — not appended as footnotes.
 
-Example output:
+**Inputs:** `raw_prompt`, `project_path`, optional `agent`, optional `target_files` (paths the prompt is about — used for monorepo routing and relevance scoring), optional `context_files` (files the agent currently has open).
+
+**Caching:** Each analysis is cached in-memory for 30 minutes and persisted to `.promptly/cache.json`. The cache key includes the analysis root + agent, and the fingerprint of `package.json` + `tsconfig.json` — edit either and the cache invalidates automatically.
+
+Example output for a `create` intent in a Next.js + Tailwind project:
+
 ```
-Create a new React functional component LoginForm in src/components/
-using TypeScript, Tailwind CSS for styling...
+Add a LoginForm component (using Next.js 14.1.0, TypeScript, styled with Tailwind CSS).
+Place files in src/components. Relevant existing files: src/components/AuthLayout.tsx,
+src/lib/auth.ts. Use kebab-case file names, named exports, single quotes, no semicolons.
+Add a colocated test file using Vitest. Do not install new packages unless explicitly requested.
 
 ---
-[Promptly] 6 rules applied. Context:
-Stack: Next.js 14.1.0, TypeScript, Tailwind CSS, Prisma | pkg: pnpm
-Style: camelCase vars, kebab-case files, single quotes, no-semi, named exports, functional components, tests: colocated
-Dirs: src/components(UI components), src/hooks(Custom hooks), src/lib(Library/shared code)
-Deps: UI Framework: react | State: zustand | Testing: vitest, @testing-library/react
+[Promptly] intent: create
 ```
+
+For `fix`, the rewrite skips convention injection and instead constrains the change ("Touch only the files necessary for the fix. Do not refactor surrounding code…"). For `explain`, the user's question is preserved verbatim and a key-areas map is added above it. See `promptly rules <agent>` for the per-intent rewrite rules.
 
 ### `get_refinement_rules`
 
@@ -146,11 +156,11 @@ Returns the current ruleset. Only called if the user asks how Promptly works.
 ```
 promptly/
 ├── src/
-│   ├── analyzer/   # Codebase analysis (stack, conventions, structure, deps)
+│   ├── analyzer/   # Codebase analysis (stack, conventions, structure, workspace, userRules)
 │   ├── bin/        # CLI entrypoint
-│   ├── cli/        # CLI commands (init, status, rules)
-│   ├── mcp/        # MCP server + tool definitions
-│   └── rules/      # Refinement rules (universal + agent-specific)
+│   ├── cli/        # CLI commands (init, status, doctor, inspect, rules)
+│   ├── mcp/        # MCP server, tool definitions, disk cache
+│   └── rules/      # Intent detection + prompt rewriter
 ├── package.json
 ├── tsconfig.json
 └── tsup.config.ts
@@ -178,15 +188,15 @@ node dist/bin/promptly.js rules claude_code
 
 ## How Refinement Works
 
-Promptly applies rules in sequence, each one enriching the prompt:
+Promptly rewrites the prompt — it doesn't just append rules. Each refinement runs through:
 
-1. **Intent Detection** — Classifies prompt as create, fix, refactor, explain, or configure
-2. **Stack Injection** — Adds concrete tech stack context (only if not already mentioned)
-3. **File Relevance** — Scans project files and injects paths likely relevant to the prompt
-4. **Conventions** — Enforces detected code style with confidence scoring (only injects high-confidence conventions)
-5. **Constraints** — Adds guardrails contextually (skips "no new packages" if user explicitly asks to install)
-6. **Success Criteria** — Defines verification steps (test runner, existing tests)
-7. **Agent-Specific** — Imperative mood, numbered steps, test reminders (varies by agent)
+1. **Intent Detection** — Weighted regex scoring classifies the prompt as `create`, `fix`, `refactor`, `explain`, `configure`, `test`, or `generic`. Strong signals ("bug", "configure ESLint") outrank weak ones ("add") so intent doesn't hinge on word order.
+2. **Analysis** — Stack, conventions, structure, monorepo layout, and user rules are gathered in parallel. Tool configs (`.prettierrc`, `.editorconfig`, ESLint) are treated as ground truth; sampling fills in what configs don't cover.
+3. **User Rules Prelude** — If a `CLAUDE.md` / `.cursorrules` / `GEMINI.md` / `QWEN.md` exists (project or global), its content is inlined at the top of the refined prompt so your rules always win over inferred conventions.
+4. **Monorepo Scoping** — If the project is a monorepo and `target_files` point into a sub-package, the analysis is narrowed to that package. Otherwise the rewrite notes that context is from the repo root and suggests passing hints.
+5. **Intent-Specific Rewrite** — Each intent produces a different shape. `create` injects stack, file location, conventions, test runner, and the no-new-packages guardrail. `fix` adds stack context, constrains to minimal changes, preserves tests. `refactor` bakes in code style but not file naming. `explain` preserves the question verbatim and prepends a key-areas map. `configure` adds framework + package manager and points to the config directory. `test` anchors on the detected test runner and enforces test-location conventions.
+6. **File Relevance Scoring** — Keyword extraction + signal boosts (`target_files` = 5, `context_files` = 3, recent git history = 2) rank project files; the top 8 are surfaced to the agent.
+7. **Convention Confidence Gate** — Only conventions above a 0.5 confidence threshold are injected, so low-signal style rules don't override judgment.
 
 ---
 
