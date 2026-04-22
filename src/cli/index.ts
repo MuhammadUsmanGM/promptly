@@ -1,6 +1,7 @@
 import { init, parseInitFlags } from "./init.js";
 import { status } from "./status.js";
 import { inspect, parseInspectFlags } from "./inspect.js";
+import { doctor, parseDoctorFlags } from "./doctor.js";
 import { printBanner, VERSION } from "./banner.js";
 import { getRulesDescription } from "../rules/index.js";
 
@@ -31,6 +32,13 @@ export async function runCli(args: string[]) {
       // Don't print the banner for JSON output — it would break jq piping.
       const inspectOpts = parseInspectFlags(args.slice(1));
       await inspect(inspectOpts);
+      break;
+    }
+
+    case "doctor": {
+      const doctorOpts = parseDoctorFlags(args.slice(1));
+      if (!doctorOpts.json) printBanner();
+      await doctor(doctorOpts);
       break;
     }
 
@@ -78,6 +86,9 @@ function printHelp() {
     promptly mcp                       Start MCP server (called automatically by your agent)
     promptly mcp --debug               Start MCP server with diagnostic logging
     promptly status                    Check which agents are configured
+    promptly doctor                    Validate wiring (MCP config parses, command resolves, instructions present)
+    promptly doctor --strict           Exit 1 on warnings too (for CI gating)
+    promptly doctor --json             Emit raw JSON
     promptly inspect [path]            Print what analyzeCodebase sees for the cwd (or path)
     promptly inspect --json            Emit raw JSON (pipe to jq for scripts)
     promptly inspect --agent <id>      Inspect as a specific agent (affects user-rules lookup)
