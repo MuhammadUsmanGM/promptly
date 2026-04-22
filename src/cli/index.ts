@@ -1,5 +1,5 @@
 import { init, parseInitFlags } from "./init.js";
-import { status } from "./status.js";
+import { status, parseStatusFlags } from "./status.js";
 import { inspect, parseInspectFlags } from "./inspect.js";
 import { doctor, parseDoctorFlags } from "./doctor.js";
 import { printBanner, VERSION } from "./banner.js";
@@ -23,10 +23,12 @@ export async function runCli(args: string[]) {
       break;
     }
 
-    case "status":
-      printBanner();
-      await status();
+    case "status": {
+      const statusOpts = parseStatusFlags(args.slice(1));
+      if (!statusOpts.json) printBanner();
+      await status(statusOpts);
       break;
+    }
 
     case "inspect": {
       // Don't print the banner for JSON output — it would break jq piping.
@@ -86,6 +88,7 @@ function printHelp() {
     promptly mcp                       Start MCP server (called automatically by your agent)
     promptly mcp --debug               Start MCP server with diagnostic logging
     promptly status                    Check which agents are configured
+    promptly status --json             Emit agent wiring state as JSON (for scripting)
     promptly doctor                    Validate wiring (MCP config parses, command resolves, instructions present)
     promptly doctor --strict           Exit 1 on warnings too (for CI gating)
     promptly doctor --json             Emit raw JSON

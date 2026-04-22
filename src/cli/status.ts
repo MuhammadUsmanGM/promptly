@@ -48,15 +48,24 @@ const AGENT_CHECKS = [
   },
 ];
 
-async function checkMcpConfig(path: string): Promise<{ found: boolean; command?: string; args?: string }> {
+interface McpResult {
+  found: boolean;
+  path?: string;
+  command?: string;
+  args?: string[];
+}
+
+async function checkMcpConfig(path: string): Promise<McpResult> {
   try {
     const raw = await readFile(path, "utf-8");
     const settings = JSON.parse(raw);
     if (settings.mcpServers?.["promptly"]) {
+      const entry = settings.mcpServers["promptly"];
       return {
         found: true,
-        command: settings.mcpServers["promptly"].command,
-        args: (settings.mcpServers["promptly"].args ?? []).join(" "),
+        path,
+        command: entry.command,
+        args: Array.isArray(entry.args) ? entry.args : [],
       };
     }
   } catch {
@@ -74,61 +83,117 @@ async function fileContains(path: string, search: string): Promise<boolean> {
   }
 }
 
-export async function status() {
-  console.log("");
+// --- Data collection (shared by human + JSON paths) ---------------------------
 
-  let anyConfigured = false;
+export interface AgentStatus {
+  agent: string;
+  mcp: {
+    found: boolean;
+    path?: string;
+    command?: string;
+    args?: string[];
+  };
+  instructions: {
+    found: boolean;
+    path?: string;
+    label?: string;
+  };
+}
 
-  for (const agent of AGENT_CHECKS) {
-    let mcpFound = false;
-    let mcpDetail = "";
-
-    // Check all MCP config locations
+async function collectStatus(): Promise<AgentStatus[]> {
+  return Promise.all(AGENT_CHECKS.map(async (agent) => {
+    let mcp: McpResult = { found: false };
     for (const mcpPath of agent.mcpPaths) {
       const result = await checkMcpConfig(mcpPath);
-      if (result.found) {
-        mcpFound = true;
-        mcpDetail = `${result.command} ${result.args}`;
-        break;
-      }
+      if (result.found) { mcp = result; break; }
     }
 
-    // Check all instruction file locations
-    let instructionsFound = false;
-    let instructionsLabel = "";
+    const instructions: AgentStatus["instructions"] = { found: false };
     for (const { path, label } of agent.instructionPaths) {
       if (await fileContains(path, "Promptly")) {
-        instructionsFound = true;
-        instructionsLabel = label;
+        instructions.found = true;
+        instructions.path = path;
+        instructions.label = label;
         break;
       }
     }
 
-    // Only show agents that have at least one thing configured
-    if (!mcpFound && !instructionsFound) continue;
+    return {
+      agent: agent.label,
+      mcp: {
+        found: mcp.found,
+        ...(mcp.path ? { path: mcp.path } : {}),
+        ...(mcp.command ? { command: mcp.command } : {}),
+        ...(mcp.args ? { args: mcp.args } : {}),
+      },
+      instructions,
+    };
+  }));
+}
 
-    anyConfigured = true;
-    console.log(`  \x1b[1m${agent.label}\x1b[0m`);
+// --- Flag parsing ---
 
-    if (mcpFound) {
-      console.log(`  \x1b[32m✔\x1b[0m MCP server configured (${mcpDetail})`);
+export interface StatusOptions {
+  json: boolean;
+}
+
+export function parseStatusFlags(args: string[]): StatusOptions {
+  const opts: StatusOptions = { json: false };
+  for (const arg of args) {
+    if (arg === "--json") opts.json = true;
+    else {
+      console.error(`Error: unknown flag "${arg}"`);
+      process.exit(1);
+    }
+  }
+  return opts;
+}
+
+// --- Main ---
+
+export async function status(opts: StatusOptions = { json: false }): Promise<void> {
+  const results = await collectStatus();
+
+  if (opts.json) {
+    // Machine-readable — filter to configured agents only, same policy as the
+    // human view. Scripts that want *all* agents can compute it from doctor
+    // instead; status is "what's wired" by design.
+    const configured = results.filter((r) => r.mcp.found || r.instructions.found);
+    process.stdout.write(JSON.stringify({ configured }, null, 2) + "\n");
+    return;
+  }
+
+  printHuman(results);
+}
+
+function printHuman(results: AgentStatus[]): void {
+  console.log("");
+
+  const configured = results.filter((r) => r.mcp.found || r.instructions.found);
+
+  if (configured.length === 0) {
+    console.log("  No agents configured. Run: promptly init");
+    console.log("");
+    return;
+  }
+
+  for (const r of configured) {
+    console.log(`  \x1b[1m${r.agent}\x1b[0m`);
+
+    if (r.mcp.found) {
+      const detail = `${r.mcp.command ?? ""} ${(r.mcp.args ?? []).join(" ")}`.trim();
+      console.log(`  \x1b[32m✔\x1b[0m MCP server configured (${detail})`);
     } else {
       console.log("  \x1b[31m✖\x1b[0m MCP server not configured");
     }
 
-    if (instructionsFound) {
-      console.log(`  \x1b[32m✔\x1b[0m Instructions found in ${instructionsLabel}`);
+    if (r.instructions.found) {
+      console.log(`  \x1b[32m✔\x1b[0m Instructions found in ${r.instructions.label}`);
     } else {
       console.log("  \x1b[31m✖\x1b[0m No Promptly instructions found");
     }
 
     console.log("");
-  }
-
-  if (!anyConfigured) {
-    console.log("  No agents configured. Run: promptly init");
-    console.log("");
-    return;
   }
 
   console.log("  ✦ Run \x1b[1mpromptly init\x1b[0m to set up additional agents.");
