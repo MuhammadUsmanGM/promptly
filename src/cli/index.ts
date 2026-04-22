@@ -1,5 +1,6 @@
 import { init, parseInitFlags } from "./init.js";
 import { status } from "./status.js";
+import { inspect, parseInspectFlags } from "./inspect.js";
 import { printBanner, VERSION } from "./banner.js";
 import { getRulesDescription } from "../rules/index.js";
 
@@ -25,6 +26,13 @@ export async function runCli(args: string[]) {
       printBanner();
       await status();
       break;
+
+    case "inspect": {
+      // Don't print the banner for JSON output — it would break jq piping.
+      const inspectOpts = parseInspectFlags(args.slice(1));
+      await inspect(inspectOpts);
+      break;
+    }
 
     case "rules": {
       printBanner();
@@ -70,6 +78,10 @@ function printHelp() {
     promptly mcp                       Start MCP server (called automatically by your agent)
     promptly mcp --debug               Start MCP server with diagnostic logging
     promptly status                    Check which agents are configured
+    promptly inspect [path]            Print what analyzeCodebase sees for the cwd (or path)
+    promptly inspect --json            Emit raw JSON (pipe to jq for scripts)
+    promptly inspect --agent <id>      Inspect as a specific agent (affects user-rules lookup)
+    promptly inspect --hints <paths>   Comma-separated paths for monorepo routing
     promptly rules [agent]             Print refinement rules
     promptly --version                 Print version
     promptly --help                    Print this help
