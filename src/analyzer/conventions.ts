@@ -5,7 +5,6 @@ import { detectConfigConventions } from "./configConventions.js";
 import { loadGitignore, type GitignoreMatcher } from "./gitignore.js";
 
 // Minimum sample sizes for high confidence
-const MIN_SAMPLES_NAMING = 8;    // need enough variable names
 const MIN_SAMPLES_FILES = 5;     // need enough files
 const MIN_SAMPLES_EXPORTS = 5;   // need enough export statements
 const MIN_SAMPLES_COMPONENTS = 3; // fewer components expected
@@ -65,22 +64,6 @@ async function sampleFiles(projectPath: string, max = 15): Promise<string[]> {
   return files;
 }
 
-function detectNamingConvention(names: string[]): { value: ConventionInfo["namingConvention"]; dominant: number; total: number } {
-  let camel = 0, snake = 0, pascal = 0;
-  for (const name of names) {
-    if (/^[a-z][a-zA-Z0-9]*[A-Z][a-zA-Z0-9]*$/.test(name)) camel++;
-    else if (/^[a-z][a-z0-9]*_[a-z0-9_]*$/.test(name)) snake++;
-    else if (/^[A-Z][a-zA-Z0-9]*$/.test(name)) pascal++;
-    // Single lowercase words (foo, bar) are ambiguous — skip them
-  }
-  const total = camel + snake + pascal;
-  if (total === 0) return { value: "mixed", dominant: 0, total: 0 };
-  if (camel / total > 0.6) return { value: "camelCase", dominant: camel, total };
-  if (snake / total > 0.6) return { value: "snake_case", dominant: snake, total };
-  if (pascal / total > 0.6) return { value: "PascalCase", dominant: pascal, total };
-  return { value: "mixed", dominant: Math.max(camel, snake, pascal), total };
-}
-
 function detectFileNaming(fileNames: string[]): { value: ConventionInfo["fileNaming"]; dominant: number; total: number } {
   let kebab = 0, camel = 0, pascal = 0, snake = 0;
   for (const name of fileNames) {
@@ -113,7 +96,6 @@ export async function detectConventions(projectPath: string): Promise<Convention
   }
 
   const fileNames = files.map((f) => basename(f));
-  const variableNames: string[] = [];
   let funcCount = 0, classCount = 0;
   let namedExports = 0, defaultExports = 0;
   let semiCount = 0, noSemiCount = 0;
@@ -149,10 +131,6 @@ export async function detectConventions(projectPath: string): Promise<Convention
         const doubleMatch = line.match(/"/g);
         if (singleMatch) singleQuotes += singleMatch.length;
         if (doubleMatch) doubleQuotes += doubleMatch.length;
-
-        // Variable names (const/let/var xxx)
-        const varMatch = trimmed.match(/^(?:const|let|var|function)\s+([a-zA-Z_$][a-zA-Z0-9_$]*)/);
-        if (varMatch) variableNames.push(varMatch[1]);
 
         // Exports
         if (trimmed.startsWith("export default")) defaultExports++;
@@ -203,7 +181,6 @@ export async function detectConventions(projectPath: string): Promise<Convention
     if (indentSize > 4) indentSize = 2; // fallback
   }
 
-  const naming = detectNamingConvention(variableNames);
   const fileNamingResult = detectFileNaming(fileNames);
 
   const totalExports = namedExports + defaultExports;
@@ -216,7 +193,6 @@ export async function detectConventions(projectPath: string): Promise<Convention
   const dominantQuotes = Math.max(singleQuotes, doubleQuotes);
 
   const confidence: ConventionConfidence = {
-    naming: computeConfidence(naming.dominant, naming.total, MIN_SAMPLES_NAMING),
     fileNaming: computeConfidence(fileNamingResult.dominant, fileNamingResult.total, MIN_SAMPLES_FILES),
     exports: computeConfidence(dominantExports, totalExports, MIN_SAMPLES_EXPORTS),
     components: computeConfidence(dominantComponents, totalComponents, MIN_SAMPLES_COMPONENTS),
@@ -240,7 +216,6 @@ export async function detectConventions(projectPath: string): Promise<Convention
   if (configs.semicolons !== undefined) confidence.semicolons = 1.0;
 
   return {
-    namingConvention: naming.value,
     fileNaming: fileNamingResult.value,
     componentPattern,
     exportStyle,

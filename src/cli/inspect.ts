@@ -145,7 +145,6 @@ function printHuman(ctx: CodebaseContext, opts: InspectOptions): void {
     const cf = c.confidence;
     console.log(`  ${bold("Conventions")}`);
     const rows: [string, string, number][] = [
-      ["naming", c.namingConvention, cf.naming],
       ["files", c.fileNaming, cf.fileNaming],
       ["exports", c.exportStyle, cf.exports],
       ["components", c.componentPattern ?? "—", cf.components],
@@ -177,18 +176,6 @@ function printHuman(ctx: CodebaseContext, opts: InspectOptions): void {
       console.log(`                key dirs:`);
       for (const [dir, purpose] of keyDirEntries) {
         console.log(`                  ${dir.padEnd(24)} ${dim(purpose)}`);
-      }
-    }
-  }
-
-  // Dependencies — counts only. Full list goes to --json.
-  if (ctx.dependencies) {
-    const d = ctx.dependencies;
-    console.log(`  ${bold("Dependencies")} ${d.production.length} prod, ${d.development.length} dev`);
-    const catEntries = Object.entries(d.categories);
-    if (catEntries.length > 0) {
-      for (const [cat, pkgs] of catEntries) {
-        console.log(`                ${cat.padEnd(16)} ${pkgs.slice(0, 6).join(", ")}${pkgs.length > 6 ? dim(` +${pkgs.length - 6} more`) : ""}`);
       }
     }
   }

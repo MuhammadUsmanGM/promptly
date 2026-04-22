@@ -3,7 +3,6 @@ import type { Agent } from "../rules/index.js";
 import { detectStack } from "./stack.js";
 import { detectConventions } from "./conventions.js";
 import { detectStructure } from "./structure.js";
-import { detectDependencies } from "./dependencies.js";
 import { resolveAnalysisRoot, labelForRoot } from "./workspace.js";
 import { loadUserRules } from "./userRules.js";
 
@@ -33,11 +32,10 @@ export async function analyzeCodebase(
   const resolved = await resolveAnalysisRoot(projectPath, hints);
   const target = resolved.analysisRoot;
 
-  const [stack, conventions, structure, dependencies, userRules] = await Promise.all([
+  const [stack, conventions, structure, userRules] = await Promise.all([
     detectStack(target),
     detectConventions(target),
     detectStructure(target, depth),
-    detectDependencies(target),
     loadUserRules(target, projectPath, agent),
   ]);
 
@@ -45,7 +43,6 @@ export async function analyzeCodebase(
   if (stack) context.stack = stack;
   if (conventions) context.conventions = conventions;
   if (structure) context.structure = structure;
-  if (dependencies) context.dependencies = dependencies;
   if (userRules) {
     context.userRules = {
       source: userRules.source,
@@ -74,6 +71,5 @@ export async function analyzeCodebase(
 export { detectStack } from "./stack.js";
 export { detectConventions } from "./conventions.js";
 export { detectStructure } from "./structure.js";
-export { detectDependencies } from "./dependencies.js";
 export { detectWorkspace, resolveAnalysisRoot } from "./workspace.js";
 export { loadUserRules } from "./userRules.js";

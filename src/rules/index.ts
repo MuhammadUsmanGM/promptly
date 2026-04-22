@@ -4,8 +4,6 @@ export type {
   ConventionInfo,
   ConventionConfidence,
   StructureInfo,
-  DependencyInfo,
-  DependencyEntry,
   WorkspaceContext,
   UserRulesContext,
 } from "./universal.js";

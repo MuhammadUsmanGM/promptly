@@ -2,7 +2,6 @@ export interface CodebaseContext {
   stack?: StackInfo;
   conventions?: ConventionInfo;
   structure?: StructureInfo;
-  dependencies?: DependencyInfo;
   workspace?: WorkspaceContext;
   userRules?: UserRulesContext;
 }
@@ -33,7 +32,6 @@ export interface StackInfo {
 }
 
 export interface ConventionConfidence {
-  naming: number;      // 0-1: how confident in namingConvention
   fileNaming: number;  // 0-1: how confident in fileNaming
   exports: number;     // 0-1: how confident in exportStyle
   components: number;  // 0-1: how confident in componentPattern
@@ -42,7 +40,6 @@ export interface ConventionConfidence {
 }
 
 export interface ConventionInfo {
-  namingConvention: "camelCase" | "snake_case" | "PascalCase" | "kebab-case" | "mixed";
   fileNaming: "camelCase" | "PascalCase" | "kebab-case" | "snake_case" | "mixed";
   componentPattern?: "functional" | "class" | "mixed";
   exportStyle: "named" | "default" | "mixed";
@@ -58,11 +55,6 @@ export interface StructureInfo {
   rootDirs: string[];
   keyDirs: Record<string, string>;
   totalFiles: number;
-  // Tree is omitted on large repos (past treeThreshold) — an empty string
-  // signals "too big to serialize, consult keyDirs/files instead". Small
-  // repos still get the full tree because it's a genuinely useful at-a-glance
-  // map when it fits in a few hundred tokens.
-  tree: string;
   // Relative paths of candidate source files. Prioritized: shallow paths and
   // files inside keyDirs come first. `truncated` means we hit the cap before
   // walking the whole repo — the list is a representative slice, not the
@@ -71,14 +63,3 @@ export interface StructureInfo {
   truncated?: boolean;
 }
 
-export interface DependencyInfo {
-  production: DependencyEntry[];
-  development: DependencyEntry[];
-  categories: Record<string, string[]>;
-}
-
-export interface DependencyEntry {
-  name: string;
-  version: string;
-  category: string;
-}
