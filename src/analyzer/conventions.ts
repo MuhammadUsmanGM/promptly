@@ -1,6 +1,7 @@
 import { readFile, readdir, stat } from "node:fs/promises";
 import { join, extname, basename } from "node:path";
 import type { ConventionInfo, ConventionConfidence } from "../rules/index.js";
+import { detectConfigConventions } from "./configConventions.js";
 
 // Minimum sample sizes for high confidence
 const MIN_SAMPLES_NAMING = 8;    // need enough variable names
@@ -89,8 +90,17 @@ function detectFileNaming(fileNames: string[]): { value: ConventionInfo["fileNam
 }
 
 export async function detectConventions(projectPath: string): Promise<ConventionInfo | null> {
+  // Tool configs are ground truth — if .prettierrc says singleQuote: true,
+  // the project uses single quotes, full stop. Read them first and let
+  // sampling fill in what the configs don't cover (naming, exports, etc.).
+  const configs = await detectConfigConventions(projectPath);
+
   const files = await sampleFiles(projectPath);
-  if (files.length === 0) return null;
+  if (files.length === 0) {
+    // No source files to sample, but we may still have useful config info.
+    // Return a minimal result driven entirely by configs (if any).
+    if (configs.sources.length === 0) return null;
+  }
 
   const fileNames = files.map((f) => basename(f));
   const variableNames: string[] = [];
@@ -204,16 +214,31 @@ export async function detectConventions(projectPath: string): Promise<Convention
     quotes: computeConfidence(dominantQuotes, totalQuotes, MIN_SAMPLES_STYLE),
   };
 
+  // Ground-truth overrides: any convention set in a tool config wins over the
+  // sampled value and gets full confidence. Sampling stays authoritative for
+  // anything the configs don't cover (naming, exports, components, test loc).
+  const sampledQuotes = singleQuotes > doubleQuotes ? "single" : "double";
+  const sampledSemis = semiCount > noSemiCount;
+  const sampledIndentation: "tabs" | "spaces" = tabLines > spaceLines ? "tabs" : "spaces";
+
+  const quotes = configs.quotes ?? sampledQuotes;
+  const semicolons = configs.semicolons ?? sampledSemis;
+  const indentation = configs.indentation ?? sampledIndentation;
+  const finalIndentSize = configs.indentSize ?? indentSize;
+
+  if (configs.quotes) confidence.quotes = 1.0;
+  if (configs.semicolons !== undefined) confidence.semicolons = 1.0;
+
   return {
     namingConvention: naming.value,
     fileNaming: fileNamingResult.value,
     componentPattern,
     exportStyle,
     testLocation: hasTests ? testLocation : "colocated",
-    indentation: tabLines > spaceLines ? "tabs" : "spaces",
-    indentSize,
-    semicolons: semiCount > noSemiCount,
-    quotes: singleQuotes > doubleQuotes ? "single" : "double",
+    indentation,
+    indentSize: finalIndentSize,
+    semicolons,
+    quotes,
     confidence,
   };
 }

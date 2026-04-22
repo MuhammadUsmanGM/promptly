@@ -6,6 +6,8 @@ export default defineConfig({
     "src/mcp/server.ts",
     "src/mcp/persistentCache.ts",
     "src/analyzer/stack.ts",
+    "src/analyzer/conventions.ts",
+    "src/analyzer/configConventions.ts",
     "src/cli/index.ts",
     "src/postinstall.ts",
   ],
