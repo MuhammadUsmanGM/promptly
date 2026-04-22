@@ -173,9 +173,52 @@ function rewriteRefactor(raw: string, ctx: CodebaseContext, agent: Agent, signal
 }
 
 function rewriteExplain(raw: string, ctx: CodebaseContext, signals: RefineSignals = {}): string {
+  // Unlike other intents, we do NOT rewrite the user's question — they phrased it
+  // the way they want an answer. Our job is to give the model enough orientation
+  // (stack, codebase map, likely files) that the explanation is actually grounded
+  // in this repo instead of generic framework knowledge.
+  const preludeLines: string[] = [];
+
+  // 1. Stack summary — one line. Skip if the prompt already names the framework,
+  //    since "explain how Next.js routing works in this app" doesn't need us to
+  //    restate "This is a Next.js codebase".
+  if (ctx.stack) {
+    const { framework, language } = ctx.stack;
+    const mentioned = mentionsAny(raw, [framework, language].filter(Boolean) as string[]);
+    if (!mentioned && (framework || language)) {
+      const bits: string[] = [];
+      if (framework) bits.push(framework);
+      if (language) bits.push(language);
+      preludeLines.push(`Codebase: ${bits.join(" / ")}.`);
+    }
+  }
+
+  // 2. Key areas map — directory → purpose. Massively useful for "how does X work"
+  //    questions in an unfamiliar codebase. Cap at 8 entries so the prelude doesn't
+  //    drown the question; prioritize src/* entries (usually the interesting ones).
+  const keyDirs = ctx.structure?.keyDirs;
+  if (keyDirs && Object.keys(keyDirs).length > 0) {
+    const entries = Object.entries(keyDirs);
+    entries.sort(([a], [b]) => {
+      const aSrc = a.startsWith("src/") ? 0 : 1;
+      const bSrc = b.startsWith("src/") ? 0 : 1;
+      if (aSrc !== bSrc) return aSrc - bSrc;
+      return a.localeCompare(b);
+    });
+    const mapped = entries.slice(0, 8).map(([dir, purpose]) => `${dir} (${purpose})`);
+    preludeLines.push(`Key areas: ${mapped.join(", ")}.`);
+  }
+
+  // 3. Files most likely to be the subject of the question. Keep the original
+  //    "Relevant files to look at" wording since it already reads naturally after
+  //    the question.
   const relevantFiles = findRelevantFiles(raw, ctx.structure, signals);
-  if (relevantFiles.length === 0) return raw;
-  return `${raw} Relevant files to look at: ${relevantFiles.join(", ")}.`;
+
+  if (preludeLines.length === 0 && relevantFiles.length === 0) return raw;
+
+  const prelude = preludeLines.length > 0 ? `${preludeLines.join(" ")}\n\n` : "";
+  const suffix = relevantFiles.length > 0 ? ` Relevant files to look at: ${relevantFiles.join(", ")}.` : "";
+  return `${prelude}${raw}${suffix}`;
 }
 
 function rewriteConfigure(raw: string, ctx: CodebaseContext, agent: Agent): string {
