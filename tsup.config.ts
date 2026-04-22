@@ -8,6 +8,7 @@ export default defineConfig({
     "src/analyzer/stack.ts",
     "src/analyzer/conventions.ts",
     "src/analyzer/configConventions.ts",
+    "src/analyzer/structure.ts",
     "src/cli/index.ts",
     "src/postinstall.ts",
   ],

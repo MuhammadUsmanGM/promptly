@@ -58,8 +58,17 @@ export interface StructureInfo {
   rootDirs: string[];
   keyDirs: Record<string, string>;
   totalFiles: number;
+  // Tree is omitted on large repos (past treeThreshold) — an empty string
+  // signals "too big to serialize, consult keyDirs/files instead". Small
+  // repos still get the full tree because it's a genuinely useful at-a-glance
+  // map when it fits in a few hundred tokens.
   tree: string;
-  files: string[]; // relative paths of source files (capped)
+  // Relative paths of candidate source files. Prioritized: shallow paths and
+  // files inside keyDirs come first. `truncated` means we hit the cap before
+  // walking the whole repo — the list is a representative slice, not the
+  // whole thing.
+  files: string[];
+  truncated?: boolean;
 }
 
 export interface DependencyInfo {
